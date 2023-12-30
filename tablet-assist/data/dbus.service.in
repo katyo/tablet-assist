@@ -1,0 +1,5 @@
+[D-BUS Service]
+Name=tablet.assist.Service
+Exec=@libexecdir@/tablet-assist --dbus
+User=tablet-assist
+SystemdService=tablet-assist.service

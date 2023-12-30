@@ -1,0 +1,20 @@
+[Unit]
+Description=Tablet-mode assistance DBus service
+
+[Service]
+Type=dbus
+BusName=tablet.assist.Service
+User=tablet-assist
+ExecStart=@libexecdir@/tablet-assist --dbus
+#Uncomment this to enable debug
+#Environment="RUST_LOG=debug"
+
+# Lockdown
+ProtectSystem=strict
+ProtectControlGroups=true
+ProtectHome=true
+ProtectKernelModules=true
+PrivateTmp=true
+RestrictAddressFamilies=AF_UNIX AF_LOCAL AF_NETLINK
+MemoryDenyWriteExecute=true
+RestrictRealtime=true
