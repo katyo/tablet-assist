@@ -2,5 +2,5 @@
 with pkgs;
 mkShell {
     nativeBuildInputs = [ pkg-config ];
-    buildInputs = [ udev libinput ];
+    buildInputs = [ udev libinput libiio ];
 }

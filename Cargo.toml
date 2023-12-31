@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["tablet-assist"]
+members = ["service"]
 
 [profile.release]
 opt-level = "z"

@@ -45,6 +45,16 @@ impl Input {
         self.path_add_device(path).ok_or_else(|| Error::AddPath(path.into()))
     }
 
+    pub fn from_paths(paths: impl IntoIterator<Item = impl AsRef<Path>>) -> Result<Self> {
+        let mut this = Self::new_path()?;
+
+        for path in paths.into_iter() {
+            this.add_path(path)?;
+        }
+
+        Ok(this)
+    }
+
     pub fn devices(&mut self) -> Result<impl Iterator<Item = Device> + '_> {
         self.dispatch()?;
 

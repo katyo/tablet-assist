@@ -10,6 +10,10 @@ pub enum Error {
     /// DBus error
     #[error("DBus error: {0}")]
     DBus(#[from] zbus::Error),
+    #[cfg(feature = "industrial_io")]
+    /// Industrial IO error
+    #[error("IIO error: {0}")]
+    Iio(#[from] industrial_io::errors::Error),
     /// UTF-8 error
     #[error("UTF8 error: {0}")]
     Utf8(#[from] core::str::Utf8Error),
