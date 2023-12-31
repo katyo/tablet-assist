@@ -1,20 +1,20 @@
+use async_signal::{Signal, Signals};
+use smol::{future::FutureExt, stream::StreamExt};
+use smol_potat::main;
 #[cfg(feature = "input")]
 use std::path::PathBuf;
 use zbus::ConnectionBuilder;
-use async_signal::{Signal, Signals};
-use smol_potat::main;
-use smol::{future::FutureExt, stream::StreamExt};
 
-mod error;
 mod args;
 mod config;
+mod error;
 #[cfg(feature = "input")]
 mod input;
 mod service;
 
-pub use error::*;
 pub use args::*;
 pub use config::*;
+pub use error::*;
 #[cfg(feature = "input")]
 pub use input::*;
 pub use service::*;
@@ -22,7 +22,7 @@ pub use service::*;
 impl Config {
     #[cfg(feature = "input")]
     pub fn find_input_devices(&self) -> Result<Vec<PathBuf>> {
-        use ::input::{DeviceCapability, event::switch::Switch};
+        use ::input::{event::switch::Switch, DeviceCapability};
 
         let mut input = Input::new_udev()?;
 
@@ -32,14 +32,33 @@ impl Config {
 
         let path_prefix = std::path::Path::new("/dev/input");
 
-        let input_devices = input.devices()?
-            .filter(|device| device.has_capability(DeviceCapability::Switch) && device.switch_has_switch(Switch::TabletMode).unwrap_or(false))
-        // skip devices which disabled via config
-            .filter(|device| !self.device.iter()
-                    .any(|config| (config.name.as_ref().map(|name| name == device.name()).unwrap_or_default() ||
-                                   config.vid.and_then(|vid| config.pid.map(|pid| vid == device.id_vendor() && pid == device.id_product())).unwrap_or_default()) &&
-                         config.enable == false)
-            )
+        let input_devices = input
+            .devices()?
+            .filter(|device| {
+                device.has_capability(DeviceCapability::Switch)
+                    && device
+                        .switch_has_switch(Switch::TabletMode)
+                        .unwrap_or(false)
+            })
+            // skip devices which disabled via config
+            .filter(|device| {
+                !self.device.iter().any(|config| {
+                    (config
+                        .name
+                        .as_ref()
+                        .map(|name| name == device.name())
+                        .unwrap_or_default()
+                        || config
+                            .vid
+                            .and_then(|vid| {
+                                config.pid.map(|pid| {
+                                    vid == device.id_vendor() && pid == device.id_product()
+                                })
+                            })
+                            .unwrap_or_default())
+                        && config.enable == false
+                })
+            })
             .map(|device| {
                 log::info!("Use input device: {device:?}");
                 path_prefix.join(device.sysname())
@@ -68,7 +87,10 @@ impl Config {
 #[cfg(feature = "input")]
 impl Input {
     async fn process(devices: Vec<PathBuf>, service: Service) -> Result<Option<Signal>> {
-        use ::input::event::{switch::{Switch, SwitchState}, Event, SwitchEvent};
+        use ::input::event::{
+            switch::{Switch, SwitchState},
+            Event, SwitchEvent,
+        };
 
         let mut input = Self::from_paths(devices)?;
 
@@ -82,7 +104,9 @@ impl Input {
                 log::debug!("Got event: {event:?}");
                 if let Event::Switch(SwitchEvent::Toggle(event)) = &event {
                     if event.switch() == Some(Switch::TabletMode) {
-                        service.set_tablet_mode(event.switch_state() == SwitchState::On).await?;
+                        service
+                            .set_tablet_mode(event.switch_state() == SwitchState::On)
+                            .await?;
                     }
                 }
             }
@@ -115,11 +139,7 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    let mut signals = Signals::new(&[
-        Signal::Term,
-        Signal::Quit,
-        Signal::Int,
-    ])?;
+    let mut signals = Signals::new(&[Signal::Term, Signal::Quit, Signal::Int])?;
 
     let service = Service::new()?;
 
@@ -152,12 +172,15 @@ async fn main() -> Result<()> {
                 }
             }
         }
-    }.boxed_local();
+    }
+    .boxed_local();
 
     #[cfg(feature = "input")]
     let tasks = if !input_devices.is_empty() {
         // Add input task
-        tasks.race(Input::process(input_devices, service.clone())).boxed_local()
+        tasks
+            .race(Input::process(input_devices, service.clone()))
+            .boxed_local()
     } else {
         tasks
     };
@@ -173,9 +196,7 @@ async fn main() -> Result<()> {
             signal_hook::low_level::emulate_default_handler(sig as _)?;
             Ok(())
         }
-        Err(error) => {
-            Err(error)
-        }
+        Err(error) => Err(error),
         _ => Ok(()),
     }
 }

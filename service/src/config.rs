@@ -1,6 +1,6 @@
-use std::path::Path;
-use serde::Deserialize;
 use crate::Result;
+use serde::Deserialize;
+use std::path::Path;
 
 /// Service configuration
 #[derive(Deserialize)]
@@ -45,7 +45,9 @@ pub struct UdevConfig {
 
 impl Default for UdevConfig {
     fn default() -> Self {
-        Self { seat: Self::default_seat() }
+        Self {
+            seat: Self::default_seat(),
+        }
     }
 }
 

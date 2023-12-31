@@ -1,13 +1,16 @@
-use ::input::{Libinput, LibinputInterface, Device, event::{device::DeviceEvent, Event, EventTrait}};
+use ::input::{
+    event::{device::DeviceEvent, Event, EventTrait},
+    Device, Libinput, LibinputInterface,
+};
+use async_io::Async;
+use libc::{O_RDONLY, O_RDWR, O_WRONLY};
 use std::{
     fs::{File, OpenOptions},
     os::unix::{fs::OpenOptionsExt, io::OwnedFd},
     path::Path,
 };
-use libc::{O_RDONLY, O_RDWR, O_WRONLY};
-use async_io::Async;
 
-use crate::{Result, Error};
+use crate::{Error, Result};
 
 pub struct Input(Async<Libinput>);
 
@@ -32,7 +35,8 @@ impl Input {
 
     pub fn add_seat(&mut self, seat: impl AsRef<str>) -> Result<()> {
         let seat = seat.as_ref();
-        self.udev_assign_seat(seat).map_err(|_| Error::AddSeat(seat.into()))
+        self.udev_assign_seat(seat)
+            .map_err(|_| Error::AddSeat(seat.into()))
     }
 
     pub fn new_path() -> Result<Self> {
@@ -42,7 +46,8 @@ impl Input {
     pub fn add_path(&mut self, path: impl AsRef<Path>) -> Result<Device> {
         let path = path.as_ref();
         let path = path.to_str().unwrap();
-        self.path_add_device(path).ok_or_else(|| Error::AddPath(path.into()))
+        self.path_add_device(path)
+            .ok_or_else(|| Error::AddPath(path.into()))
     }
 
     pub fn from_paths(paths: impl IntoIterator<Item = impl AsRef<Path>>) -> Result<Self> {

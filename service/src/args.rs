@@ -1,5 +1,5 @@
-use std::path::PathBuf;
 use argp::FromArgs;
+use std::path::PathBuf;
 
 /// Tablet mode detection service
 #[derive(FromArgs, Debug)]

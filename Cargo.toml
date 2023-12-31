@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["service"]
+members = ["core", "service", "client", "ui"]
 
 [profile.release]
 opt-level = "z"

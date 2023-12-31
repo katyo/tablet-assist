@@ -1,7 +1,10 @@
-use std::sync::{Arc, RwLock};
-use serde::{Serialize, Deserialize};
-use zbus::{dbus_interface, InterfaceRef, zvariant::{Type, Value}};
 use crate::Result;
+use std::sync::{Arc, RwLock};
+use zbus::{
+    dbus_interface,
+    InterfaceRef,
+};
+use tablet_assist_core::Orientation;
 
 /// Internal service state
 struct State {
@@ -12,36 +15,7 @@ struct State {
 
 #[derive(Clone)]
 pub struct Service {
-    state: Arc<State>
-}
-
-#[derive(Debug, Clone, Copy, Default, Type, Value, PartialEq, Serialize, Deserialize)]
-#[zvariant(signature = "s")]
-#[serde(rename_all = "kebab-case")]
-#[repr(u8)]
-pub enum Orientation {
-    #[default]
-    TopUp = 0,
-    LeftUp = 1,
-    RightUp = 2,
-    BottomUp = 3,
-}
-
-impl From<Orientation> for u8 {
-    fn from(orientation: Orientation) -> Self {
-        orientation as _
-    }
-}
-
-impl TryFrom<u8> for Orientation {
-    type Error = u8;
-    fn try_from(raw: u8) -> core::result::Result<Self, Self::Error> {
-        if raw >= Self::TopUp as _ && raw <= Self::BottomUp as _ {
-            Ok(unsafe { *(&raw as *const _ as *const _) })
-        } else {
-            Err(raw)
-        }
-    }
+    state: Arc<State>,
 }
 
 /// Tablet-mode watch service
@@ -55,7 +29,7 @@ impl Service {
 
     /// Tablet-mode available property
     #[dbus_interface(property)]
-    async fn tablet_mode_available(&self) -> bool {
+    async fn has_tablet_mode(&self) -> bool {
         self.state.tablet_mode.read().unwrap().is_some()
     }
 
@@ -67,7 +41,7 @@ impl Service {
 
     /// Orientation available property
     #[dbus_interface(property)]
-    async fn orientation_available(&self) -> bool {
+    async fn has_orientation(&self) -> bool {
         self.state.orientation.read().unwrap().is_some()
     }
 }
@@ -79,7 +53,7 @@ impl Service {
                 tablet_mode: RwLock::new(None),
                 orientation: RwLock::new(None),
                 interface: RwLock::new(None),
-            })
+            }),
         })
     }
 
