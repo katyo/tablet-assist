@@ -2,6 +2,26 @@
 resolver = "2"
 members = ["service", "agent", "ui"]
 
+[workspace.dependencies]
+thiserror = "1"
+log = "0.4"
+env_logger = "0.10"
+libc = "0.2"
+argp = "0.3"
+smol = "2"
+smol-potat = "1"
+async-signal = "0.2"
+signal-hook = "0.3"
+zbus = "3"
+dirs = "5"
+toml = "0.8"
+tablet-assist-service.path = "service"
+tablet-assist-agent.path = "agent"
+
+[workspace.dependencies.serde]
+version = "1"
+features = ["derive"]
+
 [profile.release]
 opt-level = "z"
 #debug = "limited"
