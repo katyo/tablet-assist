@@ -1,28 +1,30 @@
 use async_signal::{Signal, Signals};
 use smol::{future::FutureExt, stream::StreamExt};
 use smol_potat::main;
-#[cfg(feature = "input")]
+#[cfg(feature = "libinput")]
 use std::path::PathBuf;
 use zbus::ConnectionBuilder;
 
 mod args;
 mod config;
 mod error;
-#[cfg(feature = "input")]
+#[cfg(feature = "libinput")]
 mod input;
 mod service;
+mod types;
 
-pub use args::*;
-pub use config::*;
-pub use error::*;
-#[cfg(feature = "input")]
-pub use input::*;
-pub use service::*;
+use args::*;
+use config::*;
+use error::*;
+#[cfg(feature = "libinput")]
+use input::*;
+use service::*;
+use types::*;
 
 impl Config {
-    #[cfg(feature = "input")]
+    #[cfg(feature = "libinput")]
     pub fn find_input_devices(&self) -> Result<Vec<PathBuf>> {
-        use ::input::{event::switch::Switch, DeviceCapability};
+        use libinput::{event::switch::Switch, DeviceCapability};
 
         let mut input = Input::new_udev()?;
 
@@ -68,9 +70,9 @@ impl Config {
         Ok(input_devices)
     }
 
-    #[cfg(feature = "industrial-io")]
+    #[cfg(feature = "iio")]
     pub fn find_iio_devices(&self) -> Result<Option<()>> {
-        if let Ok(context) = industrial_io::Context::with_backend(industrial_io::Backend::Local) {
+        if let Ok(context) = iio::Context::with_backend(iio::Backend::Local) {
             //let context = industrial_io::Context::new()?;
 
             for device in context.devices() {
@@ -84,10 +86,10 @@ impl Config {
     }
 }
 
-#[cfg(feature = "input")]
+#[cfg(feature = "libinput")]
 impl Input {
     async fn process(devices: Vec<PathBuf>, service: Service) -> Result<Option<Signal>> {
-        use ::input::event::{
+        use libinput::event::{
             switch::{Switch, SwitchState},
             Event, SwitchEvent,
         };
@@ -122,17 +124,17 @@ async fn main() -> Result<()> {
     env_logger::init();
     log::info!("Start");
 
-    #[cfg(any(feature = "input", feature = "industrial-io"))]
+    #[cfg(any(feature = "libinput", feature = "iio"))]
     let config = if let Some(path) = &args.config {
         Config::from_file(path).await?
     } else {
         Config::default()
     };
 
-    #[cfg(feature = "input")]
+    #[cfg(feature = "libinput")]
     let input_devices = config.find_input_devices()?;
 
-    #[cfg(feature = "industrial-io")]
+    #[cfg(feature = "iio")]
     config.find_iio_devices()?;
 
     if !args.dbus {
@@ -152,7 +154,9 @@ async fn main() -> Result<()> {
         .build()
         .await?;
 
-    service.set_interface(connection.object_server().interface(service_path).await?);
+    service
+        .set_interface(connection.object_server().interface(service_path).await?)
+        .await;
 
     let tasks = async {
         loop {
@@ -175,7 +179,7 @@ async fn main() -> Result<()> {
     }
     .boxed_local();
 
-    #[cfg(feature = "input")]
+    #[cfg(feature = "libinput")]
     let tasks = if !input_devices.is_empty() {
         // Add input task
         tasks

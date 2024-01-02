@@ -1,9 +1,9 @@
-use ::input::{
+use libc::{O_RDONLY, O_RDWR, O_WRONLY};
+use libinput::{
     event::{device::DeviceEvent, Event, EventTrait},
     Device, Libinput, LibinputInterface,
 };
-use async_io::Async;
-use libc::{O_RDONLY, O_RDWR, O_WRONLY};
+use smol::Async;
 use std::{
     fs::{File, OpenOptions},
     os::unix::{fs::OpenOptionsExt, io::OwnedFd},

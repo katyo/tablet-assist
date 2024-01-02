@@ -6,8 +6,12 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+thiserror = "1"
 appindicator3 = "0.3"
 gtk = "0.18"
+glib = "0.18"
+zbus = "3"
+smol = "2"
 
-[dependencies.tablet-assist-client]
-path = "../client"
+[dependencies.tablet-assist-agent]
+path = "../agent"
