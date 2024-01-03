@@ -13,10 +13,6 @@ pub enum Error {
     /// DBus internal error
     #[error("DBus error: {0}")]
     DBusFdo(#[from] zbus::fdo::Error),
-    #[cfg(feature = "iio")]
-    /// Industrial IO error
-    #[error("IIO error: {0}")]
-    Iio(#[from] iio::errors::Error),
     /// UTF-8 error
     #[error("UTF8 error: {0}")]
     Utf8(#[from] core::str::Utf8Error),
@@ -29,14 +25,18 @@ pub enum Error {
     /// Termination error
     #[error("Unexpected termination")]
     Term,
-    #[cfg(feature = "libinput")]
+    #[cfg(feature = "input")]
     /// Add seat error
     #[error("Add seat error: {0}")]
     AddSeat(String),
-    #[cfg(feature = "libinput")]
+    #[cfg(feature = "input")]
     /// Add path error
     #[error("Add path error: {0}")]
     AddPath(String),
+    #[cfg(feature = "iio")]
+    /// Polling error
+    #[error("Unable to poll sensor: {0}")]
+    Poll(String),
 }
 
 /*
@@ -53,16 +53,16 @@ impl AsRef<str> for Error {
             Self::Io(_) => "io",
             Self::DBus(_) => "dbus",
             Self::DBusFdo(_) => "dbus-fdo",
-            #[cfg(feature = "iio")]
-            Self::Iio(_) => "iio",
             Self::Utf8(_) => "utf8",
             Self::TomlDe(_) => "toml-de",
             Self::TomlSer(_) => "toml-ser",
             Self::Term => "term",
-            #[cfg(feature = "libinput")]
-            Self::AddSeat(_) => "add-seat",
-            #[cfg(feature = "libinput")]
-            Self::AddPath(_) => "add-path",
+            #[cfg(feature = "input")]
+            Self::AddSeat(_) => "input-add-seat",
+            #[cfg(feature = "input")]
+            Self::AddPath(_) => "input-add-path",
+            #[cfg(feature = "iio")]
+            Self::Poll(_) => "iio-poll",
         }
     }
 }

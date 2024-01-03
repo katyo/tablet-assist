@@ -19,15 +19,18 @@ zbus.workspace = true
 serde.workspace = true
 toml.workspace = true
 
-[dependencies.libinput]
-package = "input"
-version = "0.8"
+[dependencies.input]
+workspace = true
 optional = true
 
-[dependencies.iio]
-package = "industrial-io"
-version = "0.5"
+[dependencies.udev]
+workspace = true
+optional = true
+
+[dependencies.glam]
+workspace = true
 optional = true
 
 [features]
-default = ["libinput", "iio"]
+default = ["input", "iio"]
+iio = ["udev", "glam"]

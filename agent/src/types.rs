@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
-use zbus::zvariant::{OwnedValue, Type, Value};
 pub use tablet_assist_service::Orientation;
+use zbus::zvariant::{OwnedValue, Type, Value};
 
 #[derive(Debug, Clone, Default, Type, Value, OwnedValue, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct DeviceId {

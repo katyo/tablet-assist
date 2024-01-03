@@ -1,120 +1,27 @@
 use async_signal::{Signal, Signals};
 use smol::{future::FutureExt, stream::StreamExt};
 use smol_potat::main;
-#[cfg(feature = "libinput")]
-use std::path::PathBuf;
 use zbus::ConnectionBuilder;
 
 mod args;
 mod config;
 mod error;
-#[cfg(feature = "libinput")]
-mod input;
+#[cfg(feature = "iio")]
+mod iio_iface;
+#[cfg(feature = "input")]
+mod input_iface;
 mod service;
 mod types;
 
 use args::*;
 use config::*;
 use error::*;
-#[cfg(feature = "libinput")]
-use input::*;
+#[cfg(feature = "iio")]
+use iio_iface::*;
+#[cfg(feature = "input")]
+use input_iface::*;
 use service::*;
 use types::*;
-
-impl Config {
-    #[cfg(feature = "libinput")]
-    pub fn find_input_devices(&self) -> Result<Vec<PathBuf>> {
-        use libinput::{event::switch::Switch, DeviceCapability};
-
-        let mut input = Input::new_udev()?;
-
-        for udev in &self.udev {
-            input.add_seat(&udev.seat)?;
-        }
-
-        let path_prefix = std::path::Path::new("/dev/input");
-
-        let input_devices = input
-            .devices()?
-            .filter(|device| {
-                device.has_capability(DeviceCapability::Switch)
-                    && device
-                        .switch_has_switch(Switch::TabletMode)
-                        .unwrap_or(false)
-            })
-            // skip devices which disabled via config
-            .filter(|device| {
-                !self.device.iter().any(|config| {
-                    (config
-                        .name
-                        .as_ref()
-                        .map(|name| name == device.name())
-                        .unwrap_or_default()
-                        || config
-                            .vid
-                            .and_then(|vid| {
-                                config.pid.map(|pid| {
-                                    vid == device.id_vendor() && pid == device.id_product()
-                                })
-                            })
-                            .unwrap_or_default())
-                        && config.enable == false
-                })
-            })
-            .map(|device| {
-                log::info!("Use input device: {device:?}");
-                path_prefix.join(device.sysname())
-            })
-            .collect::<Vec<_>>();
-
-        Ok(input_devices)
-    }
-
-    #[cfg(feature = "iio")]
-    pub fn find_iio_devices(&self) -> Result<Option<()>> {
-        if let Ok(context) = iio::Context::with_backend(iio::Backend::Local) {
-            //let context = industrial_io::Context::new()?;
-
-            for device in context.devices() {
-                log::debug!("IIO device: {device:?}");
-            }
-
-            Ok(Some(()))
-        } else {
-            Ok(None)
-        }
-    }
-}
-
-#[cfg(feature = "libinput")]
-impl Input {
-    async fn process(devices: Vec<PathBuf>, service: Service) -> Result<Option<Signal>> {
-        use libinput::event::{
-            switch::{Switch, SwitchState},
-            Event, SwitchEvent,
-        };
-
-        let mut input = Self::from_paths(devices)?;
-
-        loop {
-            input.wait().await.map_err(|error| {
-                log::error!("Libinput error: {error}");
-                error
-            })?;
-
-            for event in &mut *input {
-                log::debug!("Got event: {event:?}");
-                if let Event::Switch(SwitchEvent::Toggle(event)) = &event {
-                    if event.switch() == Some(Switch::TabletMode) {
-                        service
-                            .set_tablet_mode(event.switch_state() == SwitchState::On)
-                            .await?;
-                    }
-                }
-            }
-        }
-    }
-}
 
 // Although we use `async-std` here, you can use any async runtime of choice.
 #[main]
@@ -131,11 +38,11 @@ async fn main() -> Result<()> {
         Config::default()
     };
 
-    #[cfg(feature = "libinput")]
+    #[cfg(feature = "input")]
     let input_devices = config.find_input_devices()?;
 
     #[cfg(feature = "iio")]
-    config.find_iio_devices()?;
+    let iio_devices = config.find_iio_devices()?;
 
     if !args.dbus {
         return Ok(());
@@ -179,11 +86,25 @@ async fn main() -> Result<()> {
     }
     .boxed_local();
 
-    #[cfg(feature = "libinput")]
+    #[cfg(feature = "input")]
     let tasks = if !input_devices.is_empty() {
         // Add input task
         tasks
             .race(Input::process(input_devices, service.clone()))
+            .boxed_local()
+    } else {
+        tasks
+    };
+
+    #[cfg(feature = "iio")]
+    let tasks = if !iio_devices.is_empty() {
+        // Add iio task
+        tasks
+            .race(Iio::process(
+                iio_devices,
+                service.clone(),
+                &config.orientation,
+            ))
             .boxed_local()
     } else {
         tasks

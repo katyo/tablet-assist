@@ -1,12 +1,20 @@
 use crate::{DeviceId, Error, Orientation, Result};
-use smol::{spawn, Task};
+use smol::{
+    future::FutureExt,
+    lock::{Semaphore, SemaphoreGuardArc},
+    spawn,
+};
+use std::sync::Arc;
 use x11rb::{
     protocol::{randr::Rotation, xproto::Screen},
     rust_connection::RustConnection,
 };
+use x11rb_async as x11rb;
 
 pub struct XClient {
-    task: Task<Result<()>>,
+    /// Keep connection background task running
+    #[allow(unused)]
+    task: SemaphoreGuardArc,
     conn: RustConnection,
     screen: Screen,
 }
@@ -17,9 +25,20 @@ impl XClient {
 
         let (conn, screen_num, reader) = RustConnection::connect(None).await?;
 
-        let task = spawn(async {
-            reader.await?;
-            Ok(())
+        let sem = Arc::new(Semaphore::new(1));
+        // The following code never blocks
+        let task = sem.acquire_arc_blocking();
+
+        let _ = spawn(async move {
+            async move {
+                if let Err(error) = reader.await {
+                    log::error!("Xserver reader dead: {error}");
+                }
+            }
+            .race(async move {
+                sem.acquire().await;
+            })
+            .await
         });
 
         let setup = conn.setup();
@@ -83,6 +102,7 @@ impl XClient {
         Ok(devices)
     }
 
+    /*
     pub async fn input_device_status(&self, device: &DeviceId) -> Result<bool> {
         use x11rb::protocol::xinput::ConnectionExt;
 
@@ -101,6 +121,7 @@ impl XClient {
             .map(|data| if data.is_empty() { false } else { data[0] == 1 })
             .unwrap_or_default())
     }
+    */
 
     pub async fn switch_input_device(&self, device: &DeviceId, enable: bool) -> Result<()> {
         use x11rb::protocol::{

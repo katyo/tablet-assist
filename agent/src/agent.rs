@@ -1,7 +1,12 @@
 use crate::{
     Config, DeviceAction, DeviceConfig, DeviceId, Orientation, Result, ServiceProxy, XClient,
 };
-use smol::{lock::{RwLock, Semaphore, SemaphoreGuardArc}, spawn, stream::StreamExt, future::FutureExt};
+use smol::{
+    future::FutureExt,
+    lock::{RwLock, Semaphore, SemaphoreGuardArc},
+    spawn,
+    stream::StreamExt,
+};
 use std::sync::Arc;
 use zbus::{dbus_interface, Connection, InterfaceRef};
 
@@ -308,23 +313,33 @@ impl Agent {
             had_mode
         };
 
-        let device_actions = self.with_config(|config| {
-            config.tablet_mode.device.iter()
-                .filter(|(_, cfg)| cfg.action != DeviceAction::Skip)
-                .map(|(id, cfg)| (id.clone(), cfg.action)).collect::<Vec<_>>()
-        }).await;
+        let device_actions = self
+            .with_config(|config| {
+                config
+                    .tablet_mode
+                    .device
+                    .iter()
+                    .filter(|(_, cfg)| cfg.action != DeviceAction::Skip)
+                    .map(|(id, cfg)| (id.clone(), cfg.action))
+                    .collect::<Vec<_>>()
+            })
+            .await;
 
         // On/off devices
         if let Some(xclient) = &self.state.xclient {
             if mode {
                 // in tablet mode
                 for (id, action) in device_actions {
-                    xclient.switch_input_device(&id, action == DeviceAction::Enable).await?;
+                    xclient
+                        .switch_input_device(&id, action == DeviceAction::Enable)
+                        .await?;
                 }
             } else {
                 // in laptop mode
                 for (id, action) in device_actions {
-                    xclient.switch_input_device(&id, action == DeviceAction::Disable).await?;
+                    xclient
+                        .switch_input_device(&id, action == DeviceAction::Disable)
+                        .await?;
                 }
             }
         }
@@ -358,10 +373,14 @@ impl Agent {
                 *self.state.tablet_mode_task.write().await = sem.acquire_arc_blocking().into();
                 let _ = spawn(async move {
                     log::info!("Start tablet mode detection");
-                    while let Some(_) = changes.next().race(async {
-                        sem.acquire().await;
-                        None
-                    }).await {
+                    while let Some(_) = changes
+                        .next()
+                        .race(async {
+                            sem.acquire().await;
+                            None
+                        })
+                        .await
+                    {
                         if let Err(error) = agent.update_tablet_mode().await {
                             log::warn!("Error while updating tablet mode: {}", error);
                         }
@@ -426,10 +445,14 @@ impl Agent {
                 *self.state.orientation_task.write().await = sem.acquire_arc_blocking().into();
                 let _ = spawn(async move {
                     log::info!("Start orientation detection");
-                    while let Some(_) = changes.next().race(async {
-                        sem.acquire().await;
-                        None
-                    }).await {
+                    while let Some(_) = changes
+                        .next()
+                        .race(async {
+                            sem.acquire().await;
+                            None
+                        })
+                        .await
+                    {
                         if let Err(error) = agent.update_orientation().await {
                             log::warn!("Error while updating orientation: {}", error);
                         }
@@ -476,10 +499,19 @@ impl Agent {
                     HasOrientation,
                 }
 
-                let mut changes = self.state.service.receive_has_tablet_mode_changed().await
+                let mut changes = self
+                    .state
+                    .service
+                    .receive_has_tablet_mode_changed()
+                    .await
                     .map(|_| Change::HasTabletMode)
-                    .race(self.state.service.receive_has_orientation_changed().await
-                          .map(|_| Change::HasOrientation));
+                    .race(
+                        self.state
+                            .service
+                            .receive_has_orientation_changed()
+                            .await
+                            .map(|_| Change::HasOrientation),
+                    );
 
                 let agent = self.clone();
                 let sem = Arc::new(Semaphore::new(1));
@@ -487,16 +519,30 @@ impl Agent {
                 *self.state.service_task.write().await = sem.acquire_arc_blocking().into();
                 let _ = spawn(async move {
                     log::info!("Start service monitoring");
-                    while let Some(change) = changes.next().race(async {
-                        sem.acquire().await;
-                        None
-                    }).await {
+                    while let Some(change) = changes
+                        .next()
+                        .race(async {
+                            sem.acquire().await;
+                            None
+                        })
+                        .await
+                    {
                         match change {
-                            Change::HasTabletMode => if let Err(error) = agent.update_tablet_mode_detection().await {
-                                log::warn!("Error while updating tablet mode detection: {}", error);
+                            Change::HasTabletMode => {
+                                if let Err(error) = agent.update_tablet_mode_detection().await {
+                                    log::warn!(
+                                        "Error while updating tablet mode detection: {}",
+                                        error
+                                    );
+                                }
                             }
-                            Change::HasOrientation => if let Err(error) = agent.update_orientation_detection().await {
-                                log::warn!("Error while updating orientation detection: {}", error);
+                            Change::HasOrientation => {
+                                if let Err(error) = agent.update_orientation_detection().await {
+                                    log::warn!(
+                                        "Error while updating orientation detection: {}",
+                                        error
+                                    );
+                                }
                             }
                         }
                     }

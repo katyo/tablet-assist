@@ -5,7 +5,7 @@ Description=Tablet-mode assistance DBus service
 Type=dbus
 BusName=tablet.assist.Service
 User=tablet-assist
-ExecStart=@libexecdir@/tablet-assist --dbus
+ExecStart=@libexecdir@/tablet-assist-service --dbus
 #Uncomment this to enable debug
 #Environment="RUST_LOG=debug"
 

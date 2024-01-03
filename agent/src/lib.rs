@@ -39,7 +39,11 @@ pub trait Agent {
     fn input_device_action(&self, device: DeviceId) -> zbus::fdo::Result<DeviceAction>;
 
     /// Set input device action in tablet mode
-    fn set_input_device_action(&self, device: DeviceId, action: DeviceAction) -> zbus::fdo::Result<()>;
+    fn set_input_device_action(
+        &self,
+        device: DeviceId,
+        action: DeviceAction,
+    ) -> zbus::fdo::Result<()>;
 
     /// Whether orientation detection available
     #[dbus_proxy(property)]

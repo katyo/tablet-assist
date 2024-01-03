@@ -1,3 +1,5 @@
+use x11rb_async as x11rb;
+
 /// Result type
 pub type Result<T> = core::result::Result<T, Error>;
 

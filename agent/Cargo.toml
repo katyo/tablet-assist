@@ -19,8 +19,6 @@ toml.workspace = true
 dirs.workspace = true
 tablet-assist-service.workspace = true
 
-[dependencies.x11rb]
-package = "x11rb-async"
-version = "0.13"
-default-features = false
+[dependencies.x11rb-async]
+workspace = true
 features = ["randr", "xinput"]
