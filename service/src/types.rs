@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
-use zbus::zvariant::{OwnedValue, Type, Value};
+use zbus::zvariant::{OwnedValue, Type, Value, Error, Result};
 
 #[derive(
-    Debug, Clone, Copy, Default, Type, Value, OwnedValue, PartialEq, Serialize, Deserialize,
+    Debug, Clone, Copy, Default, Type, PartialEq, Serialize, Deserialize,
 )]
 #[zvariant(signature = "s")]
 #[serde(rename_all = "kebab-case")]
@@ -30,5 +30,67 @@ impl TryFrom<u8> for Orientation {
         } else {
             Err(raw)
         }
+    }
+}
+
+impl TryFrom<Value<'_>> for Orientation {
+    type Error = Error;
+
+    #[inline]
+    fn try_from(value: Value<'_>) -> Result<Self> {
+        let v = <&str>::try_from(&value)?;
+
+        Ok(match v {
+            "top-up" => Self::TopUp,
+            "left-up" => Self::LeftUp,
+            "right-up" => Self::RightUp,
+            "bottom-up" => Self::BottomUp,
+            _ => return Err(Error::IncorrectType),
+        })
+    }
+}
+
+impl From<Orientation> for Value<'_> {
+    #[inline]
+    fn from(e: Orientation) -> Self {
+        let u: &str = match e {
+            Orientation::TopUp => "top-up",
+            Orientation::LeftUp => "left-up",
+            Orientation::RightUp => "right-up",
+            Orientation::BottomUp => "bottom-up",
+        };
+
+        <Value as From<_>>::from(u).into()
+    }
+}
+
+impl TryFrom<OwnedValue> for Orientation {
+    type Error = Error;
+
+    #[inline]
+    fn try_from(value: OwnedValue) -> Result<Self> {
+        let v = <&str>::try_from(&value)?;
+
+        Ok(match v {
+            "top-up" => Self::TopUp,
+            "left-up" => Self::LeftUp,
+            "right-up" => Self::RightUp,
+            "bottom-up" => Self::BottomUp,
+            _ => return Err(Error::IncorrectType),
+        })
+    }
+}
+
+impl From<Orientation> for OwnedValue {
+    #[inline]
+    fn from(e: Orientation) -> Self {
+        let u: &str = match e {
+            Orientation::TopUp => "top-up",
+            Orientation::LeftUp => "left-up",
+            Orientation::RightUp => "right-up",
+            Orientation::BottomUp => "bottom-up",
+        };
+
+        <Value as From<_>>::from(u).into()
     }
 }
