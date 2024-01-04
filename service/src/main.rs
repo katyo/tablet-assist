@@ -44,7 +44,6 @@ async fn main() -> Result<()> {
         let registry = registry.with(if args.log {
             Some(
                 tracing_subscriber::fmt::Layer::default()
-                    .pretty()
                     .with_writer(std::io::stderr),
             )
         } else {
