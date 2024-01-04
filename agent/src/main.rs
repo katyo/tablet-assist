@@ -4,15 +4,15 @@ use smol_potat::main;
 use tablet_assist_service::{Orientation, ServiceProxy};
 use zbus::ConnectionBuilder;
 
-mod args;
 mod agent;
+mod args;
 mod config;
 mod error;
 mod types;
 mod xorg;
 
-use args::*;
 use agent::*;
+use args::*;
 use config::*;
 use error::*;
 use types::*;
@@ -22,6 +22,13 @@ use xorg::*;
 async fn main() -> Result<()> {
     let args = Args::new();
 
+    if args.version {
+        println!("{}", env!("CARGO_PKG_NAME"));
+        println!("{}", env!("CARGO_PKG_VERSION"));
+        println!("{}", env!("CARGO_PKG_DESCRIPTION"));
+        return Ok(());
+    }
+
     #[cfg(feature = "tracing-subscriber")]
     if let Some(trace) = args.trace {
         use tracing_subscriber::prelude::*;
@@ -30,7 +37,11 @@ async fn main() -> Result<()> {
 
         #[cfg(feature = "stderr")]
         let registry = registry.with(if args.log {
-            Some(tracing_subscriber::fmt::Layer::default().pretty().with_writer(std::io::stderr))
+            Some(
+                tracing_subscriber::fmt::Layer::default()
+                    .pretty()
+                    .with_writer(std::io::stderr),
+            )
         } else {
             None
         });

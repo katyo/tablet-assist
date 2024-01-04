@@ -28,6 +28,10 @@ pub struct Args {
     #[cfg(feature = "journal")]
     #[argp(switch, short = 'j')]
     pub journal: bool,
+
+    /// Show version and exit
+    #[argp(switch, short = 'v')]
+    pub version: bool,
 }
 
 impl Args {
@@ -38,6 +42,7 @@ impl Args {
 
     #[cfg(feature = "tracing-subscriber")]
     fn parse_env_filter(s: &str) -> Result<EnvFilter, String> {
-        s.parse().map_err(|error| format!("Bad tracing filter: {error}"))
+        s.parse()
+            .map_err(|error| format!("Bad tracing filter: {error}"))
     }
 }

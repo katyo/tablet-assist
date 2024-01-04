@@ -27,6 +27,13 @@ use types::*;
 async fn main() -> Result<()> {
     let args = Args::new();
 
+    if args.version {
+        println!("{}", env!("CARGO_PKG_NAME"));
+        println!("{}", env!("CARGO_PKG_VERSION"));
+        println!("{}", env!("CARGO_PKG_DESCRIPTION"));
+        return Ok(());
+    }
+
     #[cfg(feature = "tracing-subscriber")]
     if let Some(trace) = args.trace {
         use tracing_subscriber::prelude::*;
@@ -35,7 +42,11 @@ async fn main() -> Result<()> {
 
         #[cfg(feature = "stderr")]
         let registry = registry.with(if args.log {
-            Some(tracing_subscriber::fmt::Layer::default().pretty().with_writer(std::io::stderr))
+            Some(
+                tracing_subscriber::fmt::Layer::default()
+                    .pretty()
+                    .with_writer(std::io::stderr),
+            )
         } else {
             None
         });
