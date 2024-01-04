@@ -1,7 +1,12 @@
 use crate::{DeviceId, Error, Orientation, Result};
 use smol::{spawn, Task};
 use x11rb::{
-    protocol::{randr::Rotation, xproto::Screen},
+    connection::Connection,
+    protocol::{
+        randr::{Connection as RandrConnection, ConnectionExt as RandrConnectionExt, Rotation},
+        xinput::{ChangeDevicePropertyAux, ConnectionExt, ConnectionExt as InputConnectionExt},
+        xproto::{ConnectionExt as ProtoConnectionExt, PropMode, Screen},
+    },
     rust_connection::RustConnection,
 };
 use x11rb_async as x11rb;
@@ -16,8 +21,6 @@ pub struct XClient {
 
 impl XClient {
     pub async fn new() -> Result<Self> {
-        use x11rb::connection::Connection;
-
         let (conn, screen_num, reader) = RustConnection::connect(None).await?;
 
         let task = spawn(async move {
@@ -42,8 +45,6 @@ impl XClient {
     }
 
     async fn atom(&self, name: impl AsRef<[u8]>) -> Result<u32> {
-        use x11rb::protocol::xproto::ConnectionExt;
-
         Ok(self
             .conn
             .intern_atom(true, name.as_ref())
@@ -54,16 +55,12 @@ impl XClient {
     }
 
     async fn atom_name(&self, atom: u32) -> Result<String> {
-        use x11rb::protocol::xproto::ConnectionExt;
-
         Ok(String::from_utf8(
             self.conn.get_atom_name(atom).await?.reply().await?.name,
         )?)
     }
 
     pub async fn input_devices(&self) -> Result<Vec<DeviceId>> {
-        use x11rb::protocol::xinput::ConnectionExt;
-
         let res = self.conn.xinput_list_input_devices().await?;
         let reply = res.reply().await?;
 
@@ -89,8 +86,6 @@ impl XClient {
 
     /*
     pub async fn input_device_status(&self, device: &DeviceId) -> Result<bool> {
-        use x11rb::protocol::xinput::ConnectionExt;
-
         let prop = self.atom("Device Enabled").await?;
 
         let reply = self
@@ -109,11 +104,6 @@ impl XClient {
     */
 
     pub async fn switch_input_device(&self, device: &DeviceId, enable: bool) -> Result<()> {
-        use x11rb::protocol::{
-            xinput::{ChangeDevicePropertyAux, ConnectionExt},
-            xproto::PropMode,
-        };
-
         let prop = self.atom("Device Enabled").await?;
 
         let reply = self
@@ -142,8 +132,6 @@ impl XClient {
     }
 
     pub async fn monitors_info(&self) -> Result<Vec<MonitorInfo>> {
-        use x11rb::protocol::randr::ConnectionExt;
-
         let reply = self
             .conn
             .randr_get_monitors(self.screen.root, true)
@@ -168,8 +156,6 @@ impl XClient {
     }
 
     pub async fn screen_info(&self, id: Option<u32>) -> Result<ScreenInfo> {
-        use x11rb::protocol::randr::ConnectionExt;
-
         let id = id.unwrap_or(self.screen.root);
 
         let reply = self
@@ -188,8 +174,6 @@ impl XClient {
     }
 
     pub async fn output_info(&self, time: u32, id: u32) -> Result<OutputInfo> {
-        use x11rb::protocol::randr::{Connection, ConnectionExt};
-
         let reply = self
             .conn
             .randr_get_output_info(id, time)
@@ -197,7 +181,7 @@ impl XClient {
             .reply()
             .await?;
 
-        let crtc = if reply.connection == Connection::CONNECTED {
+        let crtc = if reply.connection == RandrConnection::CONNECTED {
             Some(reply.crtc)
         } else {
             None
@@ -213,8 +197,6 @@ impl XClient {
     }
 
     pub async fn crtc_info(&self, time: u32, id: u32) -> Result<CrtcInfo> {
-        use x11rb::protocol::randr::ConnectionExt;
-
         let reply = self
             .conn
             .randr_get_crtc_info(id, time)
@@ -225,7 +207,7 @@ impl XClient {
         Ok(CrtcInfo::new(
             reply.timestamp,
             id,
-            (reply.x, reply.y),
+            Rect::new(reply.x, reply.y, reply.width, reply.height),
             reply.mode,
             reply.rotation,
             reply.outputs,
@@ -233,20 +215,66 @@ impl XClient {
         ))
     }
 
-    pub async fn set_crtc(&self, crtc: &CrtcInfo) -> Result<u32> {
-        use x11rb::protocol::randr::ConnectionExt;
-
+    pub async fn set_crtc_config(&self, crtc: &CrtcInfo) -> Result<u32> {
         let reply = self
             .conn
             .randr_set_crtc_config(
                 crtc.id,
                 crtc.time,
                 crtc.time,
-                crtc.x,
-                crtc.y,
+                crtc.rect.left,
+                crtc.rect.top,
                 crtc.mode,
                 crtc.rotation,
                 &crtc.outputs,
+            )
+            .await?
+            .reply()
+            .await?;
+
+        Ok(reply.timestamp)
+    }
+
+    pub async fn crtc_panning(&self, id: u32) -> Result<CrtcPan> {
+        let reply = self.conn.randr_get_panning(id).await?.reply().await?;
+
+        Ok(CrtcPan::new(
+            reply.timestamp,
+            id,
+            Rect::new(reply.left, reply.top, reply.width, reply.height),
+            Rect::new(
+                reply.track_left,
+                reply.track_top,
+                reply.track_width,
+                reply.track_height,
+            ),
+            Border::new(
+                reply.border_left,
+                reply.border_top,
+                reply.border_right,
+                reply.border_bottom,
+            ),
+        ))
+    }
+
+    pub async fn set_crtc_panning(&self, crtc: &CrtcPan) -> Result<u32> {
+        let reply = self
+            .conn
+            .randr_set_panning(
+                crtc.id,
+                crtc.time,
+                crtc.rect.left,
+                crtc.rect.top,
+                crtc.rect.width,
+                crtc.rect.height,
+                crtc.track.left,
+                crtc.track.top,
+                crtc.track.width,
+                crtc.track.height,
+                crtc.border.left,
+                crtc.border.top,
+                crtc.border.right,
+                crtc.border.bottom,
             )
             .await?
             .reply()
@@ -300,15 +328,25 @@ impl XClient {
 
         let crtc = self.crtc_info(time, id).await?;
 
+        tracing::debug!("crtc: {crtc:?}");
+
         if crtc.rotation == rotation {
             return Ok(false);
         }
+
+        let pan = self.crtc_panning(id).await?;
+
+        tracing::debug!("pan: {pan:?}");
 
         let mut crtc = crtc;
 
         crtc.rotation = rotation;
 
-        self.set_crtc(&crtc).await?;
+        self.set_crtc_config(&crtc).await?;
+
+        let pan = self.crtc_panning(id).await?;
+
+        tracing::debug!("pan: {pan:?}");
 
         Ok(true)
     }
@@ -341,16 +379,62 @@ pub struct OutputInfo {
     pub crtcs: Vec<u32>,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct Rect<O> {
+    pub left: O,
+    pub top: O,
+    pub width: u16,
+    pub height: u16,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct Border<T> {
+    pub left: T,
+    pub top: T,
+    pub right: T,
+    pub bottom: T,
+}
+
 #[derive(Clone, Debug)]
 pub struct CrtcInfo {
     pub time: u32,
     pub id: u32,
-    pub x: i16,
-    pub y: i16,
+    pub rect: Rect<i16>,
     pub mode: u32,
     pub rotation: Rotation,
     pub outputs: Vec<u32>,
     pub possible: Vec<u32>,
+}
+
+#[derive(Clone, Debug)]
+pub struct CrtcPan {
+    pub time: u32,
+    pub id: u32,
+    pub rect: Rect<u16>,
+    pub track: Rect<u16>,
+    pub border: Border<i16>,
+}
+
+impl<O> Rect<O> {
+    pub fn new(left: O, top: O, width: u16, height: u16) -> Self {
+        Self {
+            left,
+            top,
+            width,
+            height,
+        }
+    }
+}
+
+impl<T> Border<T> {
+    pub fn new(left: T, top: T, right: T, bottom: T) -> Self {
+        Self {
+            left,
+            top,
+            right,
+            bottom,
+        }
+    }
 }
 
 impl ScreenInfo {
@@ -406,7 +490,7 @@ impl CrtcInfo {
     pub fn new(
         time: u32,
         id: u32,
-        (x, y): (i16, i16),
+        rect: Rect<i16>,
         mode: u32,
         rotation: Rotation,
         outputs: Vec<u32>,
@@ -415,12 +499,23 @@ impl CrtcInfo {
         Self {
             time,
             id,
-            x,
-            y,
+            rect,
             mode,
             rotation,
             outputs,
             possible,
+        }
+    }
+}
+
+impl CrtcPan {
+    pub fn new(time: u32, id: u32, rect: Rect<u16>, track: Rect<u16>, border: Border<i16>) -> Self {
+        Self {
+            time,
+            id,
+            rect,
+            track,
+            border,
         }
     }
 }
