@@ -109,7 +109,7 @@ impl<C> ConfigHolder<C> {
     where
         C: Serialize,
     {
-        self.into_file(&self.path).await
+        self.to_file(&self.path).await
     }
 
     /// Read config from file
@@ -124,7 +124,7 @@ impl<C> ConfigHolder<C> {
     }
 
     /// Write config into file
-    async fn into_file(&self, path: impl AsRef<Path>) -> Result<()>
+    async fn to_file(&self, path: impl AsRef<Path>) -> Result<()>
     where
         C: Serialize,
     {

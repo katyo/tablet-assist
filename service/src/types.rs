@@ -6,6 +6,7 @@ use zbus::zvariant::{OwnedValue, Type, Value};
 )]
 #[zvariant(signature = "s")]
 #[serde(rename_all = "kebab-case")]
+#[allow(clippy::enum_variant_names)]
 #[repr(u8)]
 pub enum Orientation {
     #[default]

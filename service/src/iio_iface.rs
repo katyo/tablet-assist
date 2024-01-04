@@ -61,16 +61,13 @@ impl Iio {
 
         for path in paths {
             let device = udev::Device::from_syspath(path.as_ref())?;
-            match device.sensor_type() {
-                Some(SensorType::Accel) => {
-                    let accel = Accel::new(device)?;
-                    tracing::info!("Use device: {accel:?}");
-                    match accel.location {
-                        AccelLocation::Display => iio.display_accel = accel.into(),
-                        AccelLocation::Base => iio.base_accel = accel.into(),
-                    }
+            if let Some(SensorType::Accel) = device.sensor_type() {
+                let accel = Accel::new(device)?;
+                tracing::info!("Use device: {accel:?}");
+                match accel.location {
+                    AccelLocation::Display => iio.display_accel = accel.into(),
+                    AccelLocation::Base => iio.base_accel = accel.into(),
                 }
-                _ => (),
             }
         }
 
@@ -112,7 +109,7 @@ impl Iio {
         service: Service,
         orientation_config: &OrientationConfig,
     ) -> Result<Option<async_signal::Signal>> {
-        let mut iio = Self::from_paths(devices, &orientation_config)?;
+        let mut iio = Self::from_paths(devices, orientation_config)?;
         let mut last_display_orient = None;
         let mut last_tablet_mode = None;
 
@@ -235,9 +232,9 @@ impl Accel {
         }
     }
 
-    pub fn time(&self) -> Option<&Instant> {
+    /*pub fn time(&self) -> Option<&Instant> {
         self.record.as_ref().map(|(_, time)| time)
-    }
+    }*/
 
     pub fn value(&self) -> Option<&Vec3> {
         self.record.as_ref().map(|(val, _)| val)
@@ -478,16 +475,14 @@ mod util {
     };
 
     pub fn os_str_to_cstring<T: AsRef<OsStr>>(s: T) -> Result<CString> {
-        match CString::new(s.as_ref().as_bytes()) {
-            Ok(s) => Ok(s),
-            Err(_) => Err(Error::from_raw_os_error(libc::EINVAL)),
-        }
+        CString::new(s.as_ref().as_bytes()).map_err(|_| Error::from_raw_os_error(libc::EINVAL))
     }
 
     pub fn errno_to_result(errno: libc::c_int) -> Result<()> {
-        match errno {
-            x if x >= 0 => Ok(()),
-            e => Err(Error::from_raw_os_error(-e)),
+        if errno < 0 {
+            Err(Error::from_raw_os_error(-errno))
+        } else {
+            Ok(())
         }
     }
 }

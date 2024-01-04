@@ -3,7 +3,6 @@ use input::{
     event::{Event, EventTrait},
     Device, Libinput, LibinputInterface,
 };
-use libc::{O_RDONLY, O_RDWR, O_WRONLY};
 use smol::Async;
 use std::{
     fs::{File, OpenOptions},
@@ -149,10 +148,12 @@ struct InputInterface;
 
 impl LibinputInterface for InputInterface {
     fn open_restricted(&mut self, path: &Path, flags: i32) -> core::result::Result<OwnedFd, i32> {
+        use libc::{O_RDONLY, O_RDWR, O_WRONLY};
+
         OpenOptions::new()
             .custom_flags(flags)
-            .read((flags & O_RDONLY != 0) | (flags & O_RDWR != 0))
-            .write((flags & O_WRONLY != 0) | (flags & O_RDWR != 0))
+            .read((flags & (O_RDONLY | O_RDWR)) != 0)
+            .write((flags & (O_WRONLY | O_RDWR)) != 0)
             .open(path)
             .map(|file| {
                 let fd = file.into();
@@ -199,7 +200,7 @@ impl Config {
                                 })
                             })
                             .unwrap_or_default())
-                        && config.enable == false
+                        && !config.enable
                 })
             })
             .map(|device| {

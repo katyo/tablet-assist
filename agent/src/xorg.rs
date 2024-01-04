@@ -1,9 +1,5 @@
 use crate::{DeviceId, Error, Orientation, Result};
-use smol::{
-    future::FutureExt,
-    spawn, Task,
-};
-use std::sync::Arc;
+use smol::{spawn, Task};
 use x11rb::{
     protocol::{randr::Rotation, xproto::Screen},
     rust_connection::RustConnection,
@@ -229,8 +225,7 @@ impl XClient {
         Ok(CrtcInfo::new(
             reply.timestamp,
             id,
-            reply.x,
-            reply.y,
+            (reply.x, reply.y),
             reply.mode,
             reply.rotation,
             reply.outputs,
@@ -411,8 +406,7 @@ impl CrtcInfo {
     pub fn new(
         time: u32,
         id: u32,
-        x: i16,
-        y: i16,
+        (x, y): (i16, i16),
         mode: u32,
         rotation: Rotation,
         outputs: Vec<u32>,

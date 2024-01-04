@@ -84,7 +84,7 @@ async fn agent(actions: Receiver<Action>, updates: Sender<Update>) -> Result<()>
 
     async fn update_auto_tablet_mode(updates: Sender<Update>, agent: AgentProxy<'_>) -> Result<()> {
         let mut changes = agent.receive_auto_tablet_mode_changed().await;
-        while let Some(_) = changes.next().await {
+        while changes.next().await.is_some() {
             updates
                 .send(Update::AutoTabletMode(agent.auto_tablet_mode().await?))
                 .await?;
@@ -97,7 +97,7 @@ async fn agent(actions: Receiver<Action>, updates: Sender<Update>) -> Result<()>
         agent: AgentProxy<'_>,
     ) -> Result<()> {
         let mut changes = agent.receive_tablet_mode_detection_changed().await;
-        while let Some(_) = changes.next().await {
+        while changes.next().await.is_some() {
             updates
                 .send(Update::TabletModeDetection(
                     agent.tablet_mode_detection().await?,
@@ -109,7 +109,7 @@ async fn agent(actions: Receiver<Action>, updates: Sender<Update>) -> Result<()>
 
     async fn update_tablet_mode(updates: Sender<Update>, agent: AgentProxy<'_>) -> Result<()> {
         let mut changes = agent.receive_tablet_mode_changed().await;
-        while let Some(_) = changes.next().await {
+        while changes.next().await.is_some() {
             updates
                 .send(Update::TabletMode(agent.tablet_mode().await?))
                 .await?;
@@ -119,7 +119,7 @@ async fn agent(actions: Receiver<Action>, updates: Sender<Update>) -> Result<()>
 
     async fn update_auto_orientation(updates: Sender<Update>, agent: AgentProxy<'_>) -> Result<()> {
         let mut changes = agent.receive_auto_orientation_changed().await;
-        while let Some(_) = changes.next().await {
+        while changes.next().await.is_some() {
             updates
                 .send(Update::AutoOrientation(agent.auto_orientation().await?))
                 .await?;
@@ -132,7 +132,7 @@ async fn agent(actions: Receiver<Action>, updates: Sender<Update>) -> Result<()>
         agent: AgentProxy<'_>,
     ) -> Result<()> {
         let mut changes = agent.receive_orientation_detection_changed().await;
-        while let Some(_) = changes.next().await {
+        while changes.next().await.is_some() {
             updates
                 .send(Update::OrientationDetection(
                     agent.orientation_detection().await?,
@@ -144,7 +144,7 @@ async fn agent(actions: Receiver<Action>, updates: Sender<Update>) -> Result<()>
 
     async fn update_orientation(updates: Sender<Update>, agent: AgentProxy<'_>) -> Result<()> {
         let mut changes = agent.receive_orientation_changed().await;
-        while let Some(_) = changes.next().await {
+        while changes.next().await.is_some() {
             updates
                 .send(Update::Orientation(agent.orientation().await?))
                 .await?;

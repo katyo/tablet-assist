@@ -77,7 +77,7 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    let mut signals = Signals::new(&[Signal::Term, Signal::Quit, Signal::Int])?;
+    let mut signals = Signals::new([Signal::Term, Signal::Quit, Signal::Int])?;
 
     let service = Service::new()?;
 
@@ -95,21 +95,18 @@ async fn main() -> Result<()> {
         .await;
 
     let tasks = async {
-        loop {
-            match signals.next().await {
-                Some(Ok(sig)) => {
-                    tracing::info!("Received signal {:?}", sig);
-
-                    break Ok(Some(sig));
-                }
-                Some(Err(error)) => {
-                    tracing::error!("Signal error: {error}");
-                    break Err(Error::from(error));
-                }
-                None => {
-                    tracing::error!("Signal receiver terminated");
-                    break Err(Error::Term);
-                }
+        match signals.next().await {
+            Some(Ok(sig)) => {
+                tracing::info!("Received signal {:?}", sig);
+                Ok(Some(sig))
+            }
+            Some(Err(error)) => {
+                tracing::error!("Signal error: {error}");
+                Err(Error::from(error))
+            }
+            None => {
+                tracing::error!("Signal receiver terminated");
+                Err(Error::Term)
             }
         }
     }

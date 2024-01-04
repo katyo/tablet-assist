@@ -2,12 +2,7 @@ use crate::{
     Config, ConfigHolder, DeviceAction, DeviceConfig, DeviceId, Orientation, Result, ServiceProxy,
     XClient,
 };
-use smol::{
-    future::FutureExt,
-    lock::RwLock,
-    spawn, Task,
-    stream::StreamExt,
-};
+use smol::{lock::RwLock, spawn, stream::StreamExt, Task};
 use std::sync::Arc;
 use zbus::{dbus_interface, Connection, InterfaceRef};
 
@@ -44,7 +39,7 @@ impl Agent {
     /// Whether tablet-mode detection available
     #[dbus_interface(property)]
     async fn tablet_mode_detection(&self) -> zbus::fdo::Result<bool> {
-        Ok(self.state.service.has_tablet_mode().await?)
+        self.state.service.has_tablet_mode().await
     }
 
     /// Current tablet-mode state
@@ -143,7 +138,7 @@ impl Agent {
     /// Whether orientation detection available
     #[dbus_interface(property)]
     async fn orientation_detection(&self) -> zbus::fdo::Result<bool> {
-        Ok(self.state.service.has_orientation().await?)
+        self.state.service.has_orientation().await
     }
 
     /// Current orientation
@@ -271,12 +266,12 @@ impl Agent {
 
     pub async fn with_config<T>(&self, func: impl FnOnce(&Config) -> T) -> T {
         let config = self.state.config.read().await;
-        func(&*config)
+        func(&config)
     }
 
     pub async fn with_config_mut<T>(&self, func: impl FnOnce(&mut Config) -> T) -> T {
         let mut config = self.state.config.write().await;
-        let res = func(&mut *config);
+        let res = func(&mut config);
         if let Err(error) = config.save().await {
             tracing::error!("Error while saving config: {error}");
         }
@@ -375,13 +370,14 @@ impl Agent {
                 let agent = self.clone();
                 *self.state.tablet_mode_task.write().await = spawn(async move {
                     tracing::info!("Start tablet mode detection");
-                    while let Some(_) = changes.next().await {
+                    while changes.next().await.is_some() {
                         if let Err(error) = agent.update_tablet_mode().await {
                             tracing::warn!("Error while updating tablet mode: {}", error);
                         }
                     }
                     tracing::info!("Stop tablet mode detection");
-                }).into();
+                })
+                .into();
             }
         } else {
             *self.state.tablet_mode_task.write().await = None;
@@ -437,13 +433,14 @@ impl Agent {
                 let agent = self.clone();
                 *self.state.orientation_task.write().await = spawn(async move {
                     tracing::info!("Start orientation detection");
-                    while let Some(_) = changes.next().await {
+                    while changes.next().await.is_some() {
                         if let Err(error) = agent.update_orientation().await {
                             tracing::warn!("Error while updating orientation: {}", error);
                         }
                     }
                     tracing::info!("Stop orientation detection");
-                }).into();
+                })
+                .into();
             }
         } else {
             *self.state.orientation_task.write().await = None;
@@ -522,7 +519,8 @@ impl Agent {
                         }
                     }
                     tracing::info!("Stop service monitoring");
-                }).into();
+                })
+                .into();
             }
         } else {
             *self.state.service_task.write().await = None;
