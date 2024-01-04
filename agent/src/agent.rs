@@ -95,7 +95,11 @@ impl Agent {
             .await;
 
         if auto != had_auto {
+            tracing::debug!("Auto tablet-mode changed to: {auto}");
+
             self.auto_tablet_mode_changed(sigctx).await?;
+
+            self.detect_tablet_mode(auto).await?;
 
             let mode = if auto {
                 self.state.service.tablet_mode().await?
@@ -194,7 +198,11 @@ impl Agent {
             .await;
 
         if auto != had_auto {
+            tracing::debug!("Auto orientation changed to: {auto}");
+
             self.auto_orientation_changed(sigctx).await?;
+
+            self.detect_orientation(auto).await?;
 
             let orientation = if auto {
                 self.state.service.orientation().await?
@@ -214,7 +222,7 @@ impl Agent {
         let connection = Connection::system().await?;
 
         let service = ServiceProxy::builder(&connection)
-            .cache_properties(zbus::CacheProperties::No)
+            .cache_properties(zbus::CacheProperties::Yes)
             .build()
             .await?;
 
@@ -288,13 +296,8 @@ impl Agent {
         self.apply_tablet_mode(None).await?;
         self.apply_orientation(None).await?;
 
-        if auto_tablet_mode {
-            self.detect_tablet_mode(true).await?;
-        }
-
-        if auto_orientation {
-            self.detect_orientation(true).await?;
-        }
+        self.detect_tablet_mode(auto_tablet_mode).await?;
+        self.detect_orientation(auto_orientation).await?;
 
         self.monitor_service(true).await
     }
@@ -361,7 +364,7 @@ impl Agent {
     }
 
     async fn detect_tablet_mode(&self, enable: bool) -> Result<()> {
-        let enabled = self.state.tablet_mode_task.read().await.is_some();
+        let enabled = { self.state.tablet_mode_task.read().await.is_some() };
 
         if enable == enabled {
             return Ok(());
@@ -369,20 +372,25 @@ impl Agent {
 
         if enable {
             if self.state.service.has_tablet_mode().await? {
-                let mut changes = self.state.service.receive_tablet_mode_changed().await;
                 let agent = self.clone();
-                *self.state.tablet_mode_task.write().await = spawn(async move {
+
+                let task = spawn(async move {
                     tracing::info!("Start tablet mode detection");
+                    let mut changes = agent.state.service.receive_tablet_mode_changed().await;
                     while changes.next().await.is_some() {
                         if let Err(error) = agent.update_tablet_mode().await {
-                            tracing::warn!("Error while updating tablet mode: {}", error);
+                            tracing::error!("Error while updating tablet mode: {}", error);
                         }
                     }
-                    tracing::info!("Stop tablet mode detection");
+                    tracing::error!("Enexpected stop tablet mode detection");
+                    *agent.state.tablet_mode_task.write().await = None;
                 })
                 .into();
+
+                *self.state.tablet_mode_task.write().await = task;
             }
         } else {
+            tracing::info!("Stop tablet mode detection");
             *self.state.tablet_mode_task.write().await = None;
         }
 
@@ -408,11 +416,9 @@ impl Agent {
 
         if let Some(xclient) = &self.state.xclient {
             let (time, crtc) = xclient.builtin_crtc().await?;
-            if let Err(error) = xclient
-                .set_crtc_orientation(time, crtc, orientation)
-                .await {
-                    tracing::error!("Error while rotating screen: {error}");
-                }
+            if let Err(error) = xclient.set_crtc_orientation(time, crtc, orientation).await {
+                tracing::error!("Error while rotating screen: {error}");
+            }
         }
 
         let iface = self.state.interface.read().await;
@@ -430,7 +436,7 @@ impl Agent {
     }
 
     async fn detect_orientation(&self, enable: bool) -> Result<()> {
-        let enabled = self.state.orientation_task.read().await.is_some();
+        let enabled = { self.state.orientation_task.read().await.is_some() };
 
         if enable == enabled {
             return Ok(());
@@ -438,20 +444,25 @@ impl Agent {
 
         if enable {
             if self.state.service.has_orientation().await? {
-                let mut changes = self.state.service.receive_orientation_changed().await;
                 let agent = self.clone();
-                *self.state.orientation_task.write().await = spawn(async move {
+
+                let task = spawn(async move {
                     tracing::info!("Start orientation detection");
+                    let mut changes = agent.state.service.receive_orientation_changed().await;
                     while changes.next().await.is_some() {
                         if let Err(error) = agent.update_orientation().await {
-                            tracing::warn!("Error while updating orientation: {}", error);
+                            tracing::error!("Error while updating orientation: {}", error);
                         }
                     }
-                    tracing::info!("Stop orientation detection");
+                    tracing::error!("Unexpected stop orientation detection");
+                    *agent.state.orientation_task.write().await = None;
                 })
                 .into();
+
+                *self.state.orientation_task.write().await = task;
             }
         } else {
+            tracing::info!("Stop orientation detection");
             *self.state.orientation_task.write().await = None;
         }
 
@@ -477,7 +488,7 @@ impl Agent {
     }
 
     async fn monitor_service(&self, enable: bool) -> Result<()> {
-        let enabled = self.state.service_task.read().await.is_some();
+        let enabled = { self.state.service_task.read().await.is_some() };
 
         if enable == enabled {
             return Ok(());
@@ -489,46 +500,50 @@ impl Agent {
                 HasOrientation,
             }
 
-            let mut changes = self
-                .state
-                .service
-                .receive_has_tablet_mode_changed()
-                .await
-                .map(|_| Change::HasTabletMode)
-                .race(
-                    self.state
-                        .service
-                        .receive_has_orientation_changed()
-                        .await
-                        .map(|_| Change::HasOrientation),
-                );
-
             let agent = self.clone();
-            *self.state.service_task.write().await = spawn(async move {
+
+            let task = spawn(async move {
                 tracing::info!("Start service monitoring");
+                let mut changes = agent
+                    .state
+                    .service
+                    .receive_has_tablet_mode_changed()
+                    .await
+                    .map(|_| Change::HasTabletMode)
+                    .race(
+                        agent
+                            .state
+                            .service
+                            .receive_has_orientation_changed()
+                            .await
+                            .map(|_| Change::HasOrientation),
+                    );
+
                 while let Some(change) = changes.next().await {
                     match change {
                         Change::HasTabletMode => {
                             if let Err(error) = agent.update_tablet_mode_detection().await {
-                                tracing::warn!(
-                                    "Error while updating tablet mode detection: {}",
-                                    error
+                                tracing::error!(
+                                    "Error while updating tablet mode detection: {error}"
                                 );
                             }
                         }
                         Change::HasOrientation => {
                             if let Err(error) = agent.update_orientation_detection().await {
-                                tracing::warn!(
-                                    "Error while updating orientation detection: {}",
-                                    error
+                                tracing::error!(
+                                    "Error while updating orientation detection: {error}"
                                 );
                             }
                         }
                     }
                 }
-                tracing::info!("Stop service monitoring");
-            }).into();
+                tracing::error!("Unexpected stop service monitoring");
+            })
+            .into();
+
+            *self.state.service_task.write().await = task;
         } else {
+            tracing::info!("Stop service monitoring");
             *self.state.service_task.write().await = None;
         }
 

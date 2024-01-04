@@ -1,9 +1,7 @@
 use serde::{Deserialize, Serialize};
-use zbus::zvariant::{OwnedValue, Type, Value, Error, Result};
+use zbus::zvariant::{Error, OwnedValue, Result, Type, Value};
 
-#[derive(
-    Debug, Clone, Copy, Default, Type, PartialEq, Serialize, Deserialize,
-)]
+#[derive(Debug, Clone, Copy, Default, Type, PartialEq, Serialize, Deserialize)]
 #[zvariant(signature = "s")]
 #[serde(rename_all = "kebab-case")]
 #[allow(clippy::enum_variant_names)]

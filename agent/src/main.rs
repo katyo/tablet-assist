@@ -1,7 +1,7 @@
 use async_signal::{Signal, Signals};
 use smol::stream::StreamExt;
 use smol_potat::main;
-use tablet_assist_service::{Orientation, ServiceProxy};
+use tablet_assist_service::ServiceProxy;
 use zbus::ConnectionBuilder;
 
 mod agent;
