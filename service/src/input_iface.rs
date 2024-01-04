@@ -1,6 +1,6 @@
 use crate::{Config, Error, Result, Service};
 use input::{
-    event::{device::DeviceEvent, Event, EventTrait},
+    event::{Event, EventTrait},
     Device, Libinput, LibinputInterface,
 };
 use libc::{O_RDONLY, O_RDWR, O_WRONLY};
@@ -60,6 +60,8 @@ impl Input {
     }
 
     pub fn devices(&mut self) -> Result<impl Iterator<Item = Device> + '_> {
+        use input::event::DeviceEvent;
+
         self.dispatch()?;
 
         Ok((&mut **self).filter_map(move |event| {
@@ -81,29 +83,44 @@ impl Input {
         devices: Vec<PathBuf>,
         service: Service,
     ) -> Result<Option<async_signal::Signal>> {
-        use input::event::{
+        use input::{event::{
             switch::{Switch, SwitchState},
             SwitchEvent,
-        };
+            DeviceEvent,
+        }, DeviceCapability};
 
         let mut input = Self::from_paths(devices)?;
 
         loop {
+            for event in &mut *input {
+                tracing::debug!("Got event: {event:?}");
+                match event {
+                    Event::Device(DeviceEvent::Added(event)) => {
+                        let device = event.device();
+                        if device.has_capability(DeviceCapability::Switch)
+                            && device
+                            .switch_has_switch(Switch::TabletMode)
+                            .unwrap_or(false) {
+                                service
+                                    .set_tablet_mode(false)
+                                    .await?;
+                            }
+                    }
+                    Event::Switch(SwitchEvent::Toggle(event)) => {
+                        if event.switch() == Some(Switch::TabletMode) {
+                            service
+                                .set_tablet_mode(event.switch_state() == SwitchState::On)
+                                .await?;
+                        }
+                    }
+                    _ => (),
+                }
+            }
+
             input.wait().await.map_err(|error| {
                 tracing::error!("Libinput error: {error}");
                 error
             })?;
-
-            for event in &mut *input {
-                tracing::debug!("Got event: {event:?}");
-                if let Event::Switch(SwitchEvent::Toggle(event)) = &event {
-                    if event.switch() == Some(Switch::TabletMode) {
-                        service
-                            .set_tablet_mode(event.switch_state() == SwitchState::On)
-                            .await?;
-                    }
-                }
-            }
         }
     }
 }
@@ -119,13 +136,13 @@ impl LibinputInterface for InputInterface {
             .open(path)
             .map(|file| {
                 let fd = file.into();
-                tracing::info!("Open {fd:?}");
+                tracing::trace!("Open {fd:?}");
                 fd
             })
             .map_err(|err| err.raw_os_error().unwrap())
     }
     fn close_restricted(&mut self, fd: OwnedFd) {
-        tracing::info!("Close {fd:?}");
+        tracing::trace!("Close {fd:?}");
         let _ = File::from(fd);
     }
 }
@@ -140,7 +157,7 @@ impl Config {
             input.add_seat(&udev.seat)?;
         }
 
-        let path_prefix = std::path::Path::new("/dev/input");
+        let path_prefix = Path::new("/dev/input");
 
         let input_devices = input
             .devices()?
