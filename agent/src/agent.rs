@@ -475,53 +475,50 @@ impl Agent {
         }
 
         if enable {
-            if self.state.service.has_orientation().await? {
-                enum Change {
-                    HasTabletMode,
-                    HasOrientation,
-                }
+            enum Change {
+                HasTabletMode,
+                HasOrientation,
+            }
 
-                let mut changes = self
-                    .state
-                    .service
-                    .receive_has_tablet_mode_changed()
-                    .await
-                    .map(|_| Change::HasTabletMode)
-                    .race(
-                        self.state
-                            .service
-                            .receive_has_orientation_changed()
-                            .await
-                            .map(|_| Change::HasOrientation),
-                    );
+            let mut changes = self
+                .state
+                .service
+                .receive_has_tablet_mode_changed()
+                .await
+                .map(|_| Change::HasTabletMode)
+                .race(
+                    self.state
+                        .service
+                        .receive_has_orientation_changed()
+                        .await
+                        .map(|_| Change::HasOrientation),
+                );
 
-                let agent = self.clone();
-                *self.state.service_task.write().await = spawn(async move {
-                    tracing::info!("Start service monitoring");
-                    while let Some(change) = changes.next().await {
-                        match change {
-                            Change::HasTabletMode => {
-                                if let Err(error) = agent.update_tablet_mode_detection().await {
-                                    tracing::warn!(
-                                        "Error while updating tablet mode detection: {}",
-                                        error
-                                    );
-                                }
+            let agent = self.clone();
+            *self.state.service_task.write().await = spawn(async move {
+                tracing::info!("Start service monitoring");
+                while let Some(change) = changes.next().await {
+                    match change {
+                        Change::HasTabletMode => {
+                            if let Err(error) = agent.update_tablet_mode_detection().await {
+                                tracing::warn!(
+                                    "Error while updating tablet mode detection: {}",
+                                    error
+                                );
                             }
-                            Change::HasOrientation => {
-                                if let Err(error) = agent.update_orientation_detection().await {
-                                    tracing::warn!(
-                                        "Error while updating orientation detection: {}",
-                                        error
-                                    );
-                                }
+                        }
+                        Change::HasOrientation => {
+                            if let Err(error) = agent.update_orientation_detection().await {
+                                tracing::warn!(
+                                    "Error while updating orientation detection: {}",
+                                    error
+                                );
                             }
                         }
                     }
-                    tracing::info!("Stop service monitoring");
-                })
-                .into();
-            }
+                }
+                tracing::info!("Stop service monitoring");
+            }).into();
         } else {
             *self.state.service_task.write().await = None;
         }
