@@ -1,4 +1,4 @@
-use crate::{Config, Error, Orientation, OrientationConfig, Result, Service};
+use crate::{Config, Orientation, OrientationConfig, Result, Service};
 use core::f64::consts::{FRAC_PI_2, FRAC_PI_4, PI};
 use glam::{dvec3 as vec3, DMat3 as Mat3, DVec2 as Vec2, DVec3 as Vec3};
 use std::{
@@ -8,6 +8,22 @@ use std::{
     str::FromStr,
     time::{Duration, Instant},
 };
+
+/// IIO error type
+#[derive(thiserror::Error, Debug)]
+pub enum IioError {
+    /// Poll error
+    #[error("Poll sensor: {0}")]
+    Poll(String),
+}
+
+impl AsRef<str> for IioError {
+    fn as_ref(&self) -> &str {
+        match self {
+            Self::Poll(_) => "iio-poll",
+        }
+    }
+}
 
 impl Config {
     #[cfg(feature = "iio")]
@@ -189,7 +205,7 @@ impl Accel {
         let raw = self
             .device
             .accel_raw()
-            .ok_or_else(|| Error::Poll("accel".into()))?;
+            .ok_or_else(|| IioError::Poll("accel".into()))?;
         let val = (raw - self.offset) * self.scale;
         let val = self.mount * val;
         self.push(val, time);

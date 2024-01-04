@@ -1,4 +1,4 @@
-use crate::{Config, Error, Result, Service};
+use crate::{Config, Result, Service};
 use input::{
     event::{Event, EventTrait},
     Device, Libinput, LibinputInterface,
@@ -10,6 +10,26 @@ use std::{
     os::unix::{fs::OpenOptionsExt, io::OwnedFd},
     path::{Path, PathBuf},
 };
+
+/// Input error type
+#[derive(thiserror::Error, Debug)]
+pub enum InputError {
+    /// Add seat
+    #[error("Add seat: {0}")]
+    AddSeat(String),
+    /// Add path
+    #[error("Add path: {0}")]
+    AddPath(PathBuf),
+}
+
+impl AsRef<str> for InputError {
+    fn as_ref(&self) -> &str {
+        match self {
+            Self::AddSeat(_) => "input-add-seat",
+            Self::AddPath(_) => "input-add-path",
+        }
+    }
+}
 
 pub struct Input(Async<Libinput>);
 
@@ -28,33 +48,32 @@ impl core::ops::DerefMut for Input {
 }
 
 impl Input {
-    pub fn new_udev() -> Result<Self> {
-        Ok(Self(Async::new(Libinput::new_with_udev(InputInterface))?))
-    }
+    pub fn from_udev(seats: impl IntoIterator<Item = impl AsRef<str>>) -> Result<Self> {
+        let mut this = Self(Async::new(Libinput::new_with_udev(InputInterface))?);
 
-    pub fn add_seat(&mut self, seat: impl AsRef<str>) -> Result<()> {
-        let seat = seat.as_ref();
-        self.udev_assign_seat(seat)
-            .map_err(|_| Error::AddSeat(seat.into()))
-    }
+        for seat in seats {
+            let seat = seat.as_ref();
+            this.udev_assign_seat(seat)
+                .map_err(|_| InputError::AddSeat(seat.into()))?
+        }
 
-    pub fn new_path() -> Result<Self> {
-        Ok(Self(Async::new(Libinput::new_from_path(InputInterface))?))
-    }
+        this.dispatch()?;
 
-    pub fn add_path(&mut self, path: impl AsRef<Path>) -> Result<Device> {
-        let path = path.as_ref();
-        let path = path.to_str().unwrap();
-        self.path_add_device(path)
-            .ok_or_else(|| Error::AddPath(path.into()))
+        Ok(this)
     }
 
     pub fn from_paths(paths: impl IntoIterator<Item = impl AsRef<Path>>) -> Result<Self> {
-        let mut this = Self::new_path()?;
+        let mut this = Self(Async::new(Libinput::new_from_path(InputInterface))?);
 
         for path in paths {
-            this.add_path(path)?;
+            let path = path.as_ref();
+            if let Some(path_str) = path.to_str() {
+                this.path_add_device(path_str)
+                    .ok_or_else(|| InputError::AddPath(path.into()))?;
+            }
         }
+
+        this.dispatch()?;
 
         Ok(this)
     }
@@ -151,11 +170,7 @@ impl Config {
     pub fn find_input_devices(&self) -> Result<Vec<PathBuf>> {
         use input::{event::switch::Switch, DeviceCapability};
 
-        let mut input = Input::new_udev()?;
-
-        for udev in &self.udev {
-            input.add_seat(&udev.seat)?;
-        }
+        let mut input = Input::from_udev(self.udev.iter().map(|cfg| &cfg.seat))?;
 
         let path_prefix = Path::new("/dev/input");
 

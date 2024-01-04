@@ -29,26 +29,14 @@ pub enum Error {
     #[error("Unexpected termination")]
     Term,
     #[cfg(feature = "input")]
-    /// Add seat error
-    #[error("Add seat error: {0}")]
-    AddSeat(String),
-    #[cfg(feature = "input")]
-    /// Add path error
-    #[error("Add path error: {0}")]
-    AddPath(String),
+    /// Input subsystem error
+    #[error("Input error: {0}")]
+    Input(#[from] crate::InputError),
     #[cfg(feature = "iio")]
-    /// Polling error
-    #[error("Unable to poll sensor: {0}")]
-    Poll(String),
+    /// IIO subsystem error
+    #[error("IIO error: {0}")]
+    Iio(#[from] crate::IioError),
 }
-
-/*
-impl From<Error> for zbus::Error {
-    fn from(error: Error) -> Self {
-
-    }
-}
-*/
 
 impl AsRef<str> for Error {
     fn as_ref(&self) -> &str {
@@ -62,11 +50,9 @@ impl AsRef<str> for Error {
             Self::TomlSer(_) => "toml-ser",
             Self::Term => "term",
             #[cfg(feature = "input")]
-            Self::AddSeat(_) => "input-add-seat",
-            #[cfg(feature = "input")]
-            Self::AddPath(_) => "input-add-path",
+            Self::Input(e) => e.as_ref(),
             #[cfg(feature = "iio")]
-            Self::Poll(_) => "iio-poll",
+            Self::Iio(e) => e.as_ref(),
         }
     }
 }
