@@ -267,19 +267,6 @@ impl Agent {
             }),
         };
 
-        agent.apply_tablet_mode(None).await?;
-        agent.apply_orientation(None).await?;
-
-        if auto_tablet_mode {
-            agent.detect_tablet_mode(true).await?;
-        }
-
-        if auto_tablet_mode {
-            agent.detect_orientation(true).await?;
-        }
-
-        agent.monitor_service(true).await?;
-
         Ok(agent)
     }
 
@@ -295,8 +282,23 @@ impl Agent {
         res
     }
 
-    pub async fn set_interface(&self, interface: InterfaceRef<Self>) {
+    pub async fn init(&self, interface: InterfaceRef<Self>) -> Result<()> {
+        let (auto_tablet_mode, auto_orientation) = self.with_config(|config| (config.tablet_mode.auto, config.orientation.auto)).await;
+
         *self.state.interface.write().await = Some(interface);
+
+        self.apply_tablet_mode(None).await?;
+        self.apply_orientation(None).await?;
+
+        if auto_tablet_mode {
+            self.detect_tablet_mode(true).await?;
+        }
+
+        if auto_orientation {
+            self.detect_orientation(true).await?;
+        }
+
+        self.monitor_service(true).await
     }
 
     async fn apply_tablet_mode(&self, mode: Option<bool>) -> Result<()> {

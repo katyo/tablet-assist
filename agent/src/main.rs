@@ -66,8 +66,8 @@ async fn main() -> Result<()> {
         .await?;
 
     agent
-        .set_interface(connection.object_server().interface(agent_path).await?)
-        .await;
+        .init(connection.object_server().interface(agent_path).await?)
+        .await?;
 
     let mut signals = Signals::new(&[Signal::Term, Signal::Quit, Signal::Int])?;
 
