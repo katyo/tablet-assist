@@ -4,12 +4,14 @@ use smol_potat::main;
 use tablet_assist_service::{Orientation, ServiceProxy};
 use zbus::ConnectionBuilder;
 
+mod args;
 mod agent;
 mod config;
 mod error;
 mod types;
 mod xorg;
 
+use args::*;
 use agent::*;
 use config::*;
 use error::*;
@@ -18,8 +20,32 @@ use xorg::*;
 
 #[main]
 async fn main() -> Result<()> {
-    env_logger::init();
-    log::info!("Start");
+    let args = Args::new();
+
+    #[cfg(feature = "tracing-subscriber")]
+    if let Some(trace) = args.trace {
+        use tracing_subscriber::prelude::*;
+
+        let registry = tracing_subscriber::registry().with(trace);
+
+        #[cfg(feature = "stderr")]
+        let registry = registry.with(if args.log {
+            Some(tracing_subscriber::fmt::Layer::default().pretty().with_writer(std::io::stderr))
+        } else {
+            None
+        });
+
+        #[cfg(feature = "journal")]
+        let registry = registry.with(if args.journal {
+            Some(tracing_journald::Layer::new()?)
+        } else {
+            None
+        });
+
+        registry.init();
+    }
+
+    tracing::info!("Start");
 
     let agent_name = "tablet.assist.Agent";
     let agent_path = "/tablet/assist";
@@ -42,16 +68,16 @@ async fn main() -> Result<()> {
         loop {
             match signals.next().await {
                 Some(Ok(sig)) => {
-                    log::info!("Received signal {:?}", sig);
+                    tracing::info!("Received signal {:?}", sig);
 
                     break Ok(Some(sig));
                 }
                 Some(Err(error)) => {
-                    log::error!("Signal error: {error}");
+                    tracing::error!("Signal error: {error}");
                     break Err(Error::from(error));
                 }
                 None => {
-                    log::error!("Signal receiver terminated");
+                    tracing::error!("Signal receiver terminated");
                     break Err(Error::Term);
                 }
             }
@@ -63,7 +89,7 @@ async fn main() -> Result<()> {
     drop(agent);
     drop(connection);
 
-    log::info!("Stop");
+    tracing::info!("Stop");
 
     match res {
         Ok(Some(sig)) => {

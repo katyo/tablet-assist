@@ -4,8 +4,8 @@ members = ["service", "agent", "ui"]
 
 [workspace.dependencies]
 thiserror = "1"
-log = "0.4"
-env_logger = "0.10"
+tracing = "0.1"
+tracing-journald = "0.3"
 libc = "0.2"
 argp = "0.3"
 smol = "2"
@@ -29,6 +29,10 @@ tablet-assist-agent.path = "agent"
 [workspace.dependencies.serde]
 version = "1"
 features = ["derive"]
+
+[workspace.dependencies.tracing-subscriber]
+version = "0.3"
+features = ["env-filter"]
 
 [profile.release]
 opt-level = "z"

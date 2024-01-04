@@ -104,7 +104,7 @@ impl Iio {
             let timer = smol::Timer::after(Duration::from_secs(1));
 
             if let Err(error) = iio.poll() {
-                log::warn!("Error while polling IIO sensors: {error}");
+                tracing::warn!("Error while polling IIO sensors: {error}");
             }
 
             if let Some(orient) = iio.display_orientation() {
@@ -114,7 +114,7 @@ impl Iio {
                 {
                     last_display_orient = orient.into();
                     if let Err(error) = service.set_orientation(orient).await {
-                        log::warn!("Error while setting orientation: {error}");
+                        tracing::warn!("Error while setting orientation: {error}");
                     }
                 }
             }
@@ -126,7 +126,7 @@ impl Iio {
                 {
                     last_tablet_mode = mode.into();
                     if let Err(error) = service.set_tablet_mode(mode).await {
-                        log::warn!("Error while setting tablet mode: {error}");
+                        tracing::warn!("Error while setting tablet mode: {error}");
                     }
                 }
             }

@@ -1,19 +1,10 @@
 use argp::FromArgs;
-use std::path::PathBuf;
 #[cfg(feature = "tracing-subscriber")]
 use tracing_subscriber::EnvFilter;
 
 /// Tablet mode detection service
 #[derive(FromArgs, Debug)]
 pub struct Args {
-    /// Path to config file
-    #[argp(option, short = 'c')]
-    pub config: Option<PathBuf>,
-
-    /// Run dbus service
-    #[argp(switch, short = 'd')]
-    pub dbus: bool,
-
     /// Log/trace filter
     #[cfg(feature = "tracing-subscriber")]
     #[argp(option, short = 't', from_str_fn(Args::parse_env_filter))]

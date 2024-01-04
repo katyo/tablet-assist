@@ -225,7 +225,7 @@ impl Agent {
         let xclient = XClient::new()
             .await
             .map_err(|error| {
-                log::warn!("Unable to connect to X server due to: {error}");
+                tracing::warn!("Unable to connect to X server due to: {error}");
             })
             .ok();
 
@@ -372,7 +372,7 @@ impl Agent {
                 // the following code never blocks
                 *self.state.tablet_mode_task.write().await = sem.acquire_arc_blocking().into();
                 let _ = spawn(async move {
-                    log::info!("Start tablet mode detection");
+                    tracing::info!("Start tablet mode detection");
                     while let Some(_) = changes
                         .next()
                         .race(async {
@@ -382,10 +382,10 @@ impl Agent {
                         .await
                     {
                         if let Err(error) = agent.update_tablet_mode().await {
-                            log::warn!("Error while updating tablet mode: {}", error);
+                            tracing::warn!("Error while updating tablet mode: {}", error);
                         }
                     }
-                    log::info!("Stop tablet mode detection");
+                    tracing::info!("Stop tablet mode detection");
                 });
             }
         } else {
@@ -444,7 +444,7 @@ impl Agent {
                 // the following code never blocks
                 *self.state.orientation_task.write().await = sem.acquire_arc_blocking().into();
                 let _ = spawn(async move {
-                    log::info!("Start orientation detection");
+                    tracing::info!("Start orientation detection");
                     while let Some(_) = changes
                         .next()
                         .race(async {
@@ -454,10 +454,10 @@ impl Agent {
                         .await
                     {
                         if let Err(error) = agent.update_orientation().await {
-                            log::warn!("Error while updating orientation: {}", error);
+                            tracing::warn!("Error while updating orientation: {}", error);
                         }
                     }
-                    log::info!("Stop orientation detection");
+                    tracing::info!("Stop orientation detection");
                 });
             }
         } else {
@@ -518,7 +518,7 @@ impl Agent {
                 // the following code never blocks
                 *self.state.service_task.write().await = sem.acquire_arc_blocking().into();
                 let _ = spawn(async move {
-                    log::info!("Start service monitoring");
+                    tracing::info!("Start service monitoring");
                     while let Some(change) = changes
                         .next()
                         .race(async {
@@ -530,7 +530,7 @@ impl Agent {
                         match change {
                             Change::HasTabletMode => {
                                 if let Err(error) = agent.update_tablet_mode_detection().await {
-                                    log::warn!(
+                                    tracing::warn!(
                                         "Error while updating tablet mode detection: {}",
                                         error
                                     );
@@ -538,7 +538,7 @@ impl Agent {
                             }
                             Change::HasOrientation => {
                                 if let Err(error) = agent.update_orientation_detection().await {
-                                    log::warn!(
+                                    tracing::warn!(
                                         "Error while updating orientation detection: {}",
                                         error
                                     );
@@ -546,7 +546,7 @@ impl Agent {
                             }
                         }
                     }
-                    log::info!("Stop service monitoring");
+                    tracing::info!("Stop service monitoring");
                 });
             }
         } else {

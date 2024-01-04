@@ -90,12 +90,12 @@ impl Input {
 
         loop {
             input.wait().await.map_err(|error| {
-                log::error!("Libinput error: {error}");
+                tracing::error!("Libinput error: {error}");
                 error
             })?;
 
             for event in &mut *input {
-                log::debug!("Got event: {event:?}");
+                tracing::debug!("Got event: {event:?}");
                 if let Event::Switch(SwitchEvent::Toggle(event)) = &event {
                     if event.switch() == Some(Switch::TabletMode) {
                         service
@@ -119,13 +119,13 @@ impl LibinputInterface for InputInterface {
             .open(path)
             .map(|file| {
                 let fd = file.into();
-                log::info!("Open {fd:?}");
+                tracing::info!("Open {fd:?}");
                 fd
             })
             .map_err(|err| err.raw_os_error().unwrap())
     }
     fn close_restricted(&mut self, fd: OwnedFd) {
-        log::info!("Close {fd:?}");
+        tracing::info!("Close {fd:?}");
         let _ = File::from(fd);
     }
 }
@@ -170,7 +170,7 @@ impl Config {
                 })
             })
             .map(|device| {
-                log::info!("Use input device: {device:?}");
+                tracing::info!("Use input device: {device:?}");
                 path_prefix.join(device.sysname())
             })
             .collect::<Vec<_>>();

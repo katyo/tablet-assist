@@ -32,7 +32,7 @@ impl XClient {
         let _ = spawn(async move {
             async move {
                 if let Err(error) = reader.await {
-                    log::error!("Xserver reader dead: {error}");
+                    tracing::error!("Xserver reader dead: {error}");
                 }
             }
             .race(async move {
@@ -43,7 +43,7 @@ impl XClient {
 
         let setup = conn.setup();
 
-        log::debug!(
+        tracing::debug!(
             "Proto version: {}.{}",
             setup.protocol_major_version,
             setup.protocol_minor_version
@@ -51,7 +51,7 @@ impl XClient {
 
         let screen = setup.roots[screen_num].clone();
 
-        log::debug!("Screen: {}", screen.root);
+        tracing::debug!("Screen: {}", screen.root);
 
         Ok(Self { task, conn, screen })
     }
@@ -97,7 +97,7 @@ impl XClient {
             //.filter(|device| !device.name.contains("Virtual"))
             .collect();
 
-        log::debug!("{devices:?}");
+        tracing::debug!("{devices:?}");
 
         Ok(devices)
     }
@@ -301,7 +301,7 @@ impl XClient {
 
         let orientation = rotation_to_orientation(crtc.rotation)?;
 
-        log::debug!("{orientation:?}");
+        tracing::debug!("{orientation:?}");
 
         Ok(orientation)
     }

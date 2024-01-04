@@ -13,6 +13,9 @@ pub enum Error {
     /// DBus internal error
     #[error("DBus error: {0}")]
     DBusFdo(#[from] zbus::fdo::Error),
+    /// Tracing set error
+    #[error("Tracing error: {0}")]
+    Tracing(#[from] tracing::subscriber::SetGlobalDefaultError),
     /// UTF-8 error
     #[error("UTF8 error: {0}")]
     Utf8(#[from] core::str::Utf8Error),
@@ -53,6 +56,7 @@ impl AsRef<str> for Error {
             Self::Io(_) => "io",
             Self::DBus(_) => "dbus",
             Self::DBusFdo(_) => "dbus-fdo",
+            Self::Tracing(_) => "tracing",
             Self::Utf8(_) => "utf8",
             Self::TomlDe(_) => "toml-de",
             Self::TomlSer(_) => "toml-ser",

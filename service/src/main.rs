@@ -23,13 +23,34 @@ use input_iface::*;
 use service::*;
 use types::*;
 
-// Although we use `async-std` here, you can use any async runtime of choice.
 #[main]
 async fn main() -> Result<()> {
     let args = Args::new();
 
-    env_logger::init();
-    log::info!("Start");
+    #[cfg(feature = "tracing-subscriber")]
+    if let Some(trace) = args.trace {
+        use tracing_subscriber::prelude::*;
+
+        let registry = tracing_subscriber::registry().with(trace);
+
+        #[cfg(feature = "stderr")]
+        let registry = registry.with(if args.log {
+            Some(tracing_subscriber::fmt::Layer::default().pretty().with_writer(std::io::stderr))
+        } else {
+            None
+        });
+
+        #[cfg(feature = "journal")]
+        let registry = registry.with(if args.journal {
+            Some(tracing_journald::Layer::new()?)
+        } else {
+            None
+        });
+
+        registry.init();
+    }
+
+    tracing::info!("Start");
 
     #[cfg(any(feature = "libinput", feature = "iio"))]
     let config = if let Some(path) = &args.config {
@@ -69,16 +90,16 @@ async fn main() -> Result<()> {
         loop {
             match signals.next().await {
                 Some(Ok(sig)) => {
-                    log::info!("Received signal {:?}", sig);
+                    tracing::info!("Received signal {:?}", sig);
 
                     break Ok(Some(sig));
                 }
                 Some(Err(error)) => {
-                    log::error!("Signal error: {error}");
+                    tracing::error!("Signal error: {error}");
                     break Err(Error::from(error));
                 }
                 None => {
-                    log::error!("Signal receiver terminated");
+                    tracing::error!("Signal receiver terminated");
                     break Err(Error::Term);
                 }
             }
@@ -114,7 +135,7 @@ async fn main() -> Result<()> {
 
     drop(connection);
 
-    log::info!("Stop");
+    tracing::info!("Stop");
 
     match res {
         Ok(Some(sig)) => {

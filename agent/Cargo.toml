@@ -7,8 +7,8 @@ edition = "2021"
 
 [dependencies]
 thiserror.workspace = true
-log.workspace = true
-env_logger.workspace = true
+tracing.workspace = true
+argp.workspace = true
 smol.workspace = true
 smol-potat.workspace = true
 async-signal.workspace = true
@@ -19,6 +19,19 @@ toml.workspace = true
 dirs.workspace = true
 tablet-assist-service.workspace = true
 
+[dependencies.tracing-subscriber]
+workspace = true
+optional = true
+
+[target.'cfg(unix)'.dependencies.tracing-journald]
+workspace = true
+optional = true
+
 [dependencies.x11rb-async]
 workspace = true
 features = ["randr", "xinput"]
+
+[features]
+default = ["stderr", "journal"]
+stderr = ["tracing-subscriber"]
+journal = ["tracing-subscriber", "tracing-journald"]
