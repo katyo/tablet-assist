@@ -1,10 +1,20 @@
 use argp::FromArgs;
+use std::path::PathBuf;
 #[cfg(feature = "tracing-subscriber")]
 use tracing_subscriber::EnvFilter;
 
 /// Tablet-mode assistance DBus session service.
 #[derive(FromArgs, Debug)]
 pub struct Args {
+    /// Path to config file.
+    #[argp(
+        option,
+        short = 'c',
+        arg_name = "path",
+        default = "Args::default_config()"
+    )]
+    pub config: PathBuf,
+
     /// Log/trace filter.
     #[cfg(feature = "tracing-subscriber")]
     #[argp(
@@ -34,6 +44,11 @@ impl Args {
     /// Create args from command-line
     pub fn new() -> Self {
         argp::parse_args_or_exit(argp::DEFAULT)
+    }
+
+    fn default_config() -> PathBuf {
+        let prefix = dirs::config_dir().unwrap();
+        prefix.join("tablet-assist").join("config.toml")
     }
 
     #[cfg(feature = "tracing-subscriber")]

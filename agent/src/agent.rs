@@ -1,5 +1,6 @@
 use crate::{
-    Config, DeviceAction, DeviceConfig, DeviceId, Orientation, Result, ServiceProxy, XClient,
+    Config, ConfigHolder, DeviceAction, DeviceConfig, DeviceId, Orientation, Result, ServiceProxy,
+    XClient,
 };
 use smol::{
     future::FutureExt,
@@ -17,7 +18,7 @@ struct State {
     /// Keep service task running
     service_task: RwLock<Option<SemaphoreGuardArc>>,
     /// Current configuration
-    config: RwLock<Config>,
+    config: RwLock<ConfigHolder<Config>>,
     /// X server client
     xclient: Option<XClient>,
     /// Current tablet mode
@@ -214,7 +215,7 @@ impl Agent {
 }
 
 impl Agent {
-    pub async fn new() -> Result<Self> {
+    pub async fn new(config: ConfigHolder<Config>) -> Result<Self> {
         let connection = Connection::system().await?;
 
         let service = ServiceProxy::builder(&connection)
@@ -228,8 +229,6 @@ impl Agent {
                 tracing::warn!("Unable to connect to X server due to: {error}");
             })
             .ok();
-
-        let config = Config::load().await?.unwrap_or_default();
 
         let auto_tablet_mode = config.tablet_mode.auto;
         let auto_orientation = config.orientation.auto;
@@ -278,12 +277,16 @@ impl Agent {
     pub async fn with_config_mut<T>(&self, func: impl FnOnce(&mut Config) -> T) -> T {
         let mut config = self.state.config.write().await;
         let res = func(&mut *config);
-        let _ = config.save().await;
+        if let Err(error) = config.save().await {
+            tracing::error!("Error while saving config: {error}");
+        }
         res
     }
 
     pub async fn init(&self, interface: InterfaceRef<Self>) -> Result<()> {
-        let (auto_tablet_mode, auto_orientation) = self.with_config(|config| (config.tablet_mode.auto, config.orientation.auto)).await;
+        let (auto_tablet_mode, auto_orientation) = self
+            .with_config(|config| (config.tablet_mode.auto, config.orientation.auto))
+            .await;
 
         *self.state.interface.write().await = Some(interface);
 

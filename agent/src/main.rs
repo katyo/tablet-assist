@@ -55,10 +55,13 @@ async fn main() -> Result<()> {
 
     tracing::info!("Start");
 
+    let mut config = ConfigHolder::<Config>::from_path(&args.config);
+    config.load().await?;
+
     let agent_name = "tablet.assist.Agent";
     let agent_path = "/tablet/assist";
 
-    let agent = Agent::new().await?;
+    let agent = Agent::new(config).await?;
 
     let connection = ConnectionBuilder::session()?
         .name(agent_name)?
