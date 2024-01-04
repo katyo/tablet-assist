@@ -2,7 +2,6 @@ use crate::{Config, Orientation, OrientationConfig, Result, Service};
 use core::f64::consts::{FRAC_PI_2, FRAC_PI_4, PI};
 use glam::{dvec3 as vec3, DMat3 as Mat3, DVec2 as Vec2, DVec3 as Vec3};
 use std::{
-    collections::VecDeque,
     ffi::OsStr,
     path::{Path, PathBuf},
     str::FromStr,
@@ -64,7 +63,8 @@ impl Iio {
             let device = udev::Device::from_syspath(path.as_ref())?;
             match device.device_type() {
                 Some(DeviceType::Accel) => {
-                    let accel = Accel::new(device, 4)?;
+                    let accel = Accel::new(device)?;
+                    tracing::info!("Use device: {accel:?}");
                     match accel.location {
                         AccelLocation::Display => iio.display_accel = accel.into(),
                         AccelLocation::Base => iio.base_accel = accel.into(),
@@ -96,12 +96,12 @@ impl Iio {
     pub fn tablet_mode(&self) -> Option<bool> {
         self.base_accel
             .as_ref()
-            .and_then(|accel| accel.value(0))
+            .and_then(|accel| accel.value())
             .and_then(|base| {
                 self.display_accel
                     .as_ref()
-                    .and_then(|accel| accel.value(0))
-                    .map(|display| base.0.angle_between(display.0))
+                    .and_then(|accel| accel.value())
+                    .map(|display| base.angle_between(*display))
             })
             .map(|angle| angle < FRAC_PI_2)
         // TODO:
@@ -125,9 +125,10 @@ impl Iio {
 
             if let Some(orient) = iio.display_orientation() {
                 if !last_display_orient
-                    .map(|last_orient| last_orient != orient)
+                    .map(|last_orient| last_orient == orient)
                     .unwrap_or_default()
                 {
+                    tracing::debug!("Detected orientation change: {orient:?}");
                     last_display_orient = orient.into();
                     if let Err(error) = service.set_orientation(orient).await {
                         tracing::warn!("Error while setting orientation: {error}");
@@ -137,9 +138,10 @@ impl Iio {
 
             if let Some(mode) = iio.tablet_mode() {
                 if !last_tablet_mode
-                    .map(|last_mode| last_mode != mode)
+                    .map(|last_mode| last_mode == mode)
                     .unwrap_or_default()
                 {
+                    tracing::debug!("Detected tablet-mode change: {mode:?}");
                     last_tablet_mode = mode.into();
                     if let Err(error) = service.set_tablet_mode(mode).await {
                         tracing::warn!("Error while setting tablet mode: {error}");
@@ -171,23 +173,32 @@ impl FromStr for AccelLocation {
     }
 }
 
+#[derive(Debug)]
 struct Accel {
+    /// Associated device
     device: udev::Device,
+    /// Sensor location
     location: AccelLocation,
+    /// Sensor mount matrix
     mount: Mat3,
+    /// Sensor data offset
     offset: Vec3,
+    /// Sensor data scale
     scale: Vec3,
-    depth: usize,
-    data: VecDeque<(Vec3, Instant)>,
+    /// Latest data with time
+    record: Option<(Vec3, Instant)>,
+    /// Angular velocity, rad/sec
+    velocity: Option<f64>,
+    /// Angular acceleration, rad/sec^2
+    acceleration: Option<f64>,
 }
 
 impl Accel {
-    pub fn new(device: udev::Device, depth: usize) -> Result<Self> {
+    pub fn new(device: udev::Device) -> Result<Self> {
         let location = device.accel_location().unwrap_or_default();
         let mount = device.accel_mount_matrix().unwrap_or(Mat3::IDENTITY);
         let offset = device.accel_offset().unwrap_or(Vec3::ZERO);
         let scale = device.accel_scale().unwrap_or(Vec3::ONE);
-        let data = VecDeque::with_capacity(depth);
 
         Ok(Self {
             device,
@@ -195,8 +206,9 @@ impl Accel {
             mount,
             offset,
             scale,
-            depth,
-            data,
+            record: Default::default(),
+            velocity: Default::default(),
+            acceleration: Default::default(),
         })
     }
 
@@ -212,40 +224,35 @@ impl Accel {
         Ok(())
     }
 
-    fn push(&mut self, val: Vec3, time: Instant) {
-        while self.data.len() >= self.depth {
-            self.data.pop_front();
+    fn push(&mut self, value: Vec3, time: Instant) {
+        if let Some((had_value, had_time)) = self.record.replace((value, time)) {
+            let delta_time = (time - had_time).as_secs_f64();
+            let velocity = value.angle_between(had_value) / delta_time;
+            if let Some(had_velocity) = self.velocity.replace(velocity) {
+                let acceleration = (velocity - had_velocity) / delta_time;
+                self.acceleration.replace(acceleration);
+            }
         }
-        self.data.push_back((val, time));
     }
 
-    pub fn value(&self, depth: usize) -> Option<(Vec3, Instant)> {
-        let len = self.data.len();
-        let nth = depth + 1;
-        if nth > len {
-            return None;
-        }
-        Some(self.data[len - nth])
+    pub fn time(&self) -> Option<&Instant> {
+        self.record.as_ref().map(|(_, time)| time)
     }
 
-    pub fn angular_velocity(&self, depth: usize) -> Option<(f64, Instant)> {
-        let pv = self.value(depth + 1)?;
-        let lv = self.value(depth)?;
-        let dv = lv.0.angle_between(pv.0);
-        let dt = (lv.1 - pv.1).as_secs_f64();
-        Some((dv / dt, lv.1))
+    pub fn value(&self) -> Option<&Vec3> {
+        self.record.as_ref().map(|(val, _)| val)
     }
 
-    pub fn angular_acceleration(&self, depth: usize) -> Option<(f64, Instant)> {
-        let pv = self.angular_velocity(depth + 1)?;
-        let lv = self.angular_velocity(depth)?;
-        let da = lv.0 - pv.0;
-        let dt = (lv.1 - pv.1).as_secs_f64();
-        Some((da / dt, lv.1))
+    pub fn angular_velocity(&self) -> Option<f64> {
+        self.velocity
+    }
+
+    pub fn angular_acceleration(&self) -> Option<f64> {
+        self.acceleration
     }
 
     pub fn plane_orientation(&self) -> Option<(Orientation, f64, f64)> {
-        let value = self.value(0)?.0;
+        let value = self.value()?;
 
         let z_angle = value.angle_between(Vec3::Z) - FRAC_PI_2;
 
@@ -282,8 +289,8 @@ impl Accel {
     }
 
     pub fn plane_orientation_checked(&self, config: &OrientationConfig) -> Option<Orientation> {
-        let acceleration = self.angular_acceleration(0)?.0;
-        let velocity = self.angular_velocity(0)?.0;
+        let acceleration = self.angular_acceleration()?;
+        let velocity = self.angular_velocity()?;
         let (orientation, z_angle, angle) = self.plane_orientation()?;
         if config.check(
             angle.into(),
