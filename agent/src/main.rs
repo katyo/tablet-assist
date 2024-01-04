@@ -23,9 +23,10 @@ async fn main() -> Result<()> {
     let args = Args::new();
 
     if args.version {
-        println!("{}", env!("CARGO_PKG_NAME"));
-        println!("{}", env!("CARGO_PKG_VERSION"));
-        println!("{}", env!("CARGO_PKG_DESCRIPTION"));
+        println!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+        if !env!("CARGO_PKG_DESCRIPTION").is_empty() {
+            println!("{}", env!("CARGO_PKG_DESCRIPTION"));
+        }
         return Ok(());
     }
 

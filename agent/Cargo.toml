@@ -1,9 +1,13 @@
 [package]
 name = "tablet-assist-agent"
 version = "0.1.0"
+description = "Tablet-mode assistance DBus session service."
+authors = ["K. <kayo@illumium.org>"]
+homepage = "https://github.com/katyo/tablet-assist"
+repository = "https://github.com/katyo/tablet-assist"
+license = "MIT"
+keywords = ["tablet", "laptop", "convertible", "orientation", "usability"]
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 thiserror.workspace = true
