@@ -4,8 +4,8 @@ use crate::{
 };
 use smol::{
     future::FutureExt,
-    lock::{RwLock, Semaphore, SemaphoreGuardArc},
-    spawn,
+    lock::RwLock,
+    spawn, Task,
     stream::StreamExt,
 };
 use std::sync::Arc;
@@ -16,7 +16,7 @@ struct State {
     /// System service interface
     service: ServiceProxy<'static>,
     /// Keep service task running
-    service_task: RwLock<Option<SemaphoreGuardArc>>,
+    service_task: RwLock<Option<Task<()>>>,
     /// Current configuration
     config: RwLock<ConfigHolder<Config>>,
     /// X server client
@@ -24,11 +24,11 @@ struct State {
     /// Current tablet mode
     tablet_mode: RwLock<bool>,
     /// Keep tablet mode detection task running
-    tablet_mode_task: RwLock<Option<SemaphoreGuardArc>>,
+    tablet_mode_task: RwLock<Option<Task<()>>>,
     /// Current orientation
     orientation: RwLock<Orientation>,
     /// Keep orientation detection task running
-    orientation_task: RwLock<Option<SemaphoreGuardArc>>,
+    orientation_task: RwLock<Option<Task<()>>>,
     /// DBus interface reference for signaling
     interface: RwLock<Option<InterfaceRef<Agent>>>,
 }
@@ -373,25 +373,15 @@ impl Agent {
             if self.state.service.has_tablet_mode().await? {
                 let mut changes = self.state.service.receive_tablet_mode_changed().await;
                 let agent = self.clone();
-                let sem = Arc::new(Semaphore::new(1));
-                // the following code never blocks
-                *self.state.tablet_mode_task.write().await = sem.acquire_arc_blocking().into();
-                let _ = spawn(async move {
+                *self.state.tablet_mode_task.write().await = spawn(async move {
                     tracing::info!("Start tablet mode detection");
-                    while let Some(_) = changes
-                        .next()
-                        .race(async {
-                            sem.acquire().await;
-                            None
-                        })
-                        .await
-                    {
+                    while let Some(_) = changes.next().await {
                         if let Err(error) = agent.update_tablet_mode().await {
                             tracing::warn!("Error while updating tablet mode: {}", error);
                         }
                     }
                     tracing::info!("Stop tablet mode detection");
-                });
+                }).into();
             }
         } else {
             *self.state.tablet_mode_task.write().await = None;
@@ -445,25 +435,15 @@ impl Agent {
             if self.state.service.has_orientation().await? {
                 let mut changes = self.state.service.receive_orientation_changed().await;
                 let agent = self.clone();
-                let sem = Arc::new(Semaphore::new(1));
-                // the following code never blocks
-                *self.state.orientation_task.write().await = sem.acquire_arc_blocking().into();
-                let _ = spawn(async move {
+                *self.state.orientation_task.write().await = spawn(async move {
                     tracing::info!("Start orientation detection");
-                    while let Some(_) = changes
-                        .next()
-                        .race(async {
-                            sem.acquire().await;
-                            None
-                        })
-                        .await
-                    {
+                    while let Some(_) = changes.next().await {
                         if let Err(error) = agent.update_orientation().await {
                             tracing::warn!("Error while updating orientation: {}", error);
                         }
                     }
                     tracing::info!("Stop orientation detection");
-                });
+                }).into();
             }
         } else {
             *self.state.orientation_task.write().await = None;
@@ -519,19 +499,9 @@ impl Agent {
                     );
 
                 let agent = self.clone();
-                let sem = Arc::new(Semaphore::new(1));
-                // the following code never blocks
-                *self.state.service_task.write().await = sem.acquire_arc_blocking().into();
-                let _ = spawn(async move {
+                *self.state.service_task.write().await = spawn(async move {
                     tracing::info!("Start service monitoring");
-                    while let Some(change) = changes
-                        .next()
-                        .race(async {
-                            sem.acquire().await;
-                            None
-                        })
-                        .await
-                    {
+                    while let Some(change) = changes.next().await {
                         match change {
                             Change::HasTabletMode => {
                                 if let Err(error) = agent.update_tablet_mode_detection().await {
@@ -552,7 +522,7 @@ impl Agent {
                         }
                     }
                     tracing::info!("Stop service monitoring");
-                });
+                }).into();
             }
         } else {
             *self.state.service_task.write().await = None;

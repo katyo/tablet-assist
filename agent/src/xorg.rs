@@ -1,8 +1,7 @@
 use crate::{DeviceId, Error, Orientation, Result};
 use smol::{
     future::FutureExt,
-    lock::{Semaphore, SemaphoreGuardArc},
-    spawn,
+    spawn, Task,
 };
 use std::sync::Arc;
 use x11rb::{
@@ -14,7 +13,7 @@ use x11rb_async as x11rb;
 pub struct XClient {
     /// Keep connection background task running
     #[allow(unused)]
-    task: SemaphoreGuardArc,
+    task: Task<()>,
     conn: RustConnection,
     screen: Screen,
 }
@@ -25,20 +24,10 @@ impl XClient {
 
         let (conn, screen_num, reader) = RustConnection::connect(None).await?;
 
-        let sem = Arc::new(Semaphore::new(1));
-        // The following code never blocks
-        let task = sem.acquire_arc_blocking();
-
-        let _ = spawn(async move {
-            async move {
-                if let Err(error) = reader.await {
-                    tracing::error!("Xserver reader dead: {error}");
-                }
+        let task = spawn(async move {
+            if let Err(error) = reader.await {
+                tracing::error!("Xserver reader dead: {error}");
             }
-            .race(async move {
-                sem.acquire().await;
-            })
-            .await
         });
 
         let setup = conn.setup();
