@@ -304,6 +304,7 @@ impl Agent {
 
         let mode = if let Some(mode) = mode {
             if had_mode == mode {
+                tracing::debug!("Tablet mode already set to: {mode}");
                 return Ok(());
             }
 
@@ -312,6 +313,8 @@ impl Agent {
         } else {
             had_mode
         };
+
+        tracing::debug!("Switch tablet mode: {mode}");
 
         let device_actions = self
             .with_config(|config| {
@@ -391,6 +394,7 @@ impl Agent {
 
         let orientation = if let Some(orientation) = orientation {
             if had_orientation == orientation {
+                tracing::debug!("Orientation already set to: {orientation:?}");
                 return Ok(());
             }
 
@@ -400,11 +404,15 @@ impl Agent {
             had_orientation
         };
 
+        tracing::debug!("Apply orientation: {orientation:?}");
+
         if let Some(xclient) = &self.state.xclient {
             let (time, crtc) = xclient.builtin_crtc().await?;
-            xclient
+            if let Err(error) = xclient
                 .set_crtc_orientation(time, crtc, orientation)
-                .await?;
+                .await {
+                    tracing::error!("Error while rotating screen: {error}");
+                }
         }
 
         let iface = self.state.interface.read().await;
@@ -417,6 +425,7 @@ impl Agent {
 
     async fn update_orientation(&self) -> Result<()> {
         let orientation = self.state.service.orientation().await?;
+        tracing::debug!("Update orientation: {orientation:?}");
         self.apply_orientation(orientation.into()).await
     }
 
