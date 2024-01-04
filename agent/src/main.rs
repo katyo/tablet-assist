@@ -37,10 +37,7 @@ async fn main() -> Result<()> {
 
         #[cfg(feature = "stderr")]
         let registry = registry.with(if args.log {
-            Some(
-                tracing_subscriber::fmt::Layer::default()
-                    .with_writer(std::io::stderr),
-            )
+            Some(tracing_subscriber::fmt::Layer::default().with_writer(std::io::stderr))
         } else {
             None
         });

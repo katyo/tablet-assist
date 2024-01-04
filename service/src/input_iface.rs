@@ -102,11 +102,13 @@ impl Input {
         devices: Vec<PathBuf>,
         service: Service,
     ) -> Result<Option<async_signal::Signal>> {
-        use input::{event::{
-            switch::{Switch, SwitchState},
-            SwitchEvent,
-            DeviceEvent,
-        }, DeviceCapability};
+        use input::{
+            event::{
+                switch::{Switch, SwitchState},
+                DeviceEvent, SwitchEvent,
+            },
+            DeviceCapability,
+        };
 
         let mut input = Self::from_paths(devices)?;
 
@@ -118,12 +120,11 @@ impl Input {
                         let device = event.device();
                         if device.has_capability(DeviceCapability::Switch)
                             && device
-                            .switch_has_switch(Switch::TabletMode)
-                            .unwrap_or(false) {
-                                service
-                                    .set_tablet_mode(false)
-                                    .await?;
-                            }
+                                .switch_has_switch(Switch::TabletMode)
+                                .unwrap_or(false)
+                        {
+                            service.set_tablet_mode(false).await?;
+                        }
                     }
                     Event::Switch(SwitchEvent::Toggle(event)) => {
                         if event.switch() == Some(Switch::TabletMode) {

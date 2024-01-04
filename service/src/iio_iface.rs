@@ -34,7 +34,7 @@ impl Config {
         let devices = enumerator
             .scan_devices()
             .unwrap()
-            .filter(|dev| dev.is_initialized() && dev.device_type().is_some())
+            .filter(|dev| dev.is_initialized() && dev.sensor_type().is_some())
             .map(|drv| drv.syspath().into())
             .collect();
 
@@ -61,8 +61,8 @@ impl Iio {
 
         for path in paths {
             let device = udev::Device::from_syspath(path.as_ref())?;
-            match device.device_type() {
-                Some(DeviceType::Accel) => {
+            match device.sensor_type() {
+                Some(SensorType::Accel) => {
                     let accel = Accel::new(device)?;
                     tracing::info!("Use device: {accel:?}");
                     match accel.location {
@@ -307,12 +307,12 @@ impl Accel {
 
 #[derive(Clone, Copy, Debug)]
 #[repr(u8)]
-enum DeviceType {
+enum SensorType {
     Accel,
 }
 
 trait DeviceExt {
-    fn device_type(&self) -> Option<DeviceType>;
+    fn sensor_type(&self) -> Option<SensorType>;
 
     fn property_value_str(&self, property: impl AsRef<OsStr>) -> Option<&str>;
     fn property_value_typed<T: FromStr>(&self, property: impl AsRef<OsStr>) -> Option<T>;
@@ -331,15 +331,20 @@ trait DeviceExt {
 }
 
 impl DeviceExt for udev::Device {
-    fn device_type(&self) -> Option<DeviceType> {
-        self.attribute_value("name")
-            .and_then(|name| name.to_str())
-            .and_then(|name| {
-                if name.contains("accel") {
-                    Some(DeviceType::Accel)
-                } else {
-                    None
-                }
+    fn sensor_type(&self) -> Option<SensorType> {
+        self.devtype()
+            .and_then(|type_| type_.to_str())
+            .filter(|type_| type_ == &"iio_device")
+            .and_then(|_| {
+                self.attribute_value("name")
+                    .and_then(|name| name.to_str())
+                    .and_then(|name| {
+                        if name.contains("accel") {
+                            Some(SensorType::Accel)
+                        } else {
+                            None
+                        }
+                    })
             })
     }
 
