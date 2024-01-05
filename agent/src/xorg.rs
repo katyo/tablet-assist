@@ -3,8 +3,11 @@ use smol::{spawn, Task};
 use x11rb::{
     connection::Connection,
     protocol::{
-        randr::{Connection as RandrConnection, ConnectionExt as RandrConnectionExt, Rotation},
-        xinput::{ChangeDevicePropertyAux, ConnectionExt, ConnectionExt as InputConnectionExt},
+        randr::{
+            Connection as RandrConnection, ConnectionExt as RandrConnectionExt, ModeInfo,
+            RefreshRates, Rotation, ScreenSize,
+        },
+        xinput::{ChangeDevicePropertyAux, ConnectionExt as InputConnectionExt},
         xproto::{ConnectionExt as ProtoConnectionExt, PropMode, Screen},
     },
     rust_connection::RustConnection,
@@ -54,11 +57,13 @@ impl XClient {
             .atom)
     }
 
+    /*
     async fn atom_name(&self, atom: u32) -> Result<String> {
         Ok(String::from_utf8(
             self.conn.get_atom_name(atom).await?.reply().await?.name,
         )?)
     }
+    */
 
     pub async fn input_devices(&self) -> Result<Vec<DeviceId>> {
         let res = self.conn.xinput_list_input_devices().await?;
@@ -131,52 +136,129 @@ impl XClient {
         Ok(())
     }
 
-    pub async fn monitors_info(&self) -> Result<Vec<MonitorInfo>> {
+    async fn get_screen_resources(&self, window: u32) -> Result<(ScreenResources, u32, u32)> {
+        tracing::debug!("Request get screen 0x{window:x?} resources");
+
         let reply = self
             .conn
-            .randr_get_monitors(self.screen.root, true)
+            .randr_get_screen_resources_current(window)
             .await?
             .reply()
             .await?;
 
-        let mut monitors = Vec::default();
+        let res = ScreenResources {
+            crtcs: reply.crtcs,
+            outputs: reply.outputs,
+            modes: reply.modes,
+        };
 
-        for monitor in reply.monitors {
-            monitors.push(MonitorInfo::new(
-                reply.timestamp,
-                monitor.name,
-                self.atom_name(monitor.name).await?,
-                monitor.primary,
-                monitor.automatic,
-                monitor.outputs,
-            ));
-        }
+        let time = reply.timestamp;
+        let conf_time = reply.config_timestamp;
 
-        Ok(monitors)
+        tracing::debug!(
+            "Reply get screen 0x{window:x?} resources, time {time}, conf_time {conf_time}"
+        );
+
+        Ok((res, time, conf_time))
     }
 
-    pub async fn screen_info(&self, id: Option<u32>) -> Result<ScreenInfo> {
-        let id = id.unwrap_or(self.screen.root);
+    /*
+    async fn get_screen_info(&self, window: u32) -> Result<(ScreenInfo, u32, u32, u32)> {
+        tracing::debug!("Request get screen 0x{window:x?} info");
 
         let reply = self
             .conn
-            .randr_get_screen_resources_current(id)
+            .randr_get_screen_info(window)
             .await?
             .reply()
             .await?;
 
-        Ok(ScreenInfo::new(
-            reply.timestamp,
-            id,
-            reply.outputs,
-            reply.crtcs,
-        ))
+        let info = ScreenInfo {
+            config: ScreenConfig {
+                size_id: reply.size_id,
+                rotation: reply.rotation,
+                rate: reply.rate,
+            },
+            sizes: reply.sizes,
+            rates: reply.rates,
+            rotations: reply.rotations,
+        };
+
+        let root = reply.root;
+        let time = reply.timestamp;
+        let conf_time = reply.config_timestamp;
+
+        tracing::debug!(
+            "Reply get screen 0x{root:x?} info {info:?}, time {time}, conf_time {conf_time}"
+        );
+
+        Ok((info, root, time, conf_time))
     }
 
-    pub async fn output_info(&self, time: u32, id: u32) -> Result<OutputInfo> {
+    async fn set_screen_config(
+        &self,
+        window: u32,
+        time: u32,
+        conf_time: u32,
+        config: &ScreenConfig,
+    ) -> Result<(u32, u32, u32)> {
+        tracing::debug!(
+            "Request set screen 0x{window:x?} config {config:?}, time {time}, conf_time {conf_time}"
+        );
+
         let reply = self
             .conn
-            .randr_get_output_info(id, time)
+            .randr_set_screen_config(
+                window,
+                time,
+                conf_time,
+                config.size_id,
+                config.rotation,
+                config.rate,
+            )
+            .await?
+            .reply()
+            .await?;
+
+        let root = reply.root;
+        let time = reply.new_timestamp;
+        let conf_time = reply.config_timestamp;
+
+        tracing::debug!("Reply set screen 0x{root:x?}, time {time}, conf_time {conf_time}");
+
+        Ok((root, time, conf_time))
+    }
+    */
+
+    async fn set_screen_size(
+        &self,
+        window: u32,
+        size: &Size<u16>,
+        size_mm: &Size<u32>,
+    ) -> Result<()> {
+        tracing::debug!("Request set screen 0x{window:x?} size {size:?}px {size_mm:?}mm");
+
+        self.conn
+            .randr_set_screen_size(
+                window,
+                size.width,
+                size.height,
+                size_mm.width,
+                size_mm.height,
+            )
+            .await?;
+
+        tracing::debug!("Reply set screen 0x{window:x?} size");
+
+        Ok(())
+    }
+
+    async fn get_output_info(&self, output: u32, conf_time: u32) -> Result<(OutputInfo, u32)> {
+        tracing::debug!("Request get output 0x{output:x?} info, conf_time {conf_time}");
+
+        let reply = self
+            .conn
+            .randr_get_output_info(output, conf_time)
             .await?
             .reply()
             .await?;
@@ -187,337 +269,239 @@ impl XClient {
             None
         };
 
-        Ok(OutputInfo::new(
-            reply.timestamp,
-            id,
-            String::from_utf8(reply.name)?,
+        let info = OutputInfo {
+            name: String::from_utf8(reply.name)?,
+            size_mm: Size {
+                width: reply.mm_width,
+                height: reply.mm_height,
+            },
             crtc,
-            reply.crtcs,
-        ))
+            crtcs: reply.crtcs,
+        };
+
+        let time = reply.timestamp;
+
+        tracing::debug!("Reply get output 0x{output:x?} info {info:?}, time {time}");
+
+        Ok((info, time))
     }
 
-    pub async fn crtc_info(&self, time: u32, id: u32) -> Result<CrtcInfo> {
+    async fn get_crtc_info(&self, crtc: u32, conf_time: u32) -> Result<(CrtcInfo, u32)> {
+        tracing::debug!("Request get crtc 0x{crtc:x?} info, conf_time {conf_time}");
+
         let reply = self
             .conn
-            .randr_get_crtc_info(id, time)
+            .randr_get_crtc_info(crtc, conf_time)
             .await?
             .reply()
             .await?;
 
-        Ok(CrtcInfo::new(
-            reply.timestamp,
-            id,
-            Rect::new(reply.x, reply.y, reply.width, reply.height),
-            reply.mode,
-            reply.rotation,
-            reply.outputs,
-            reply.possible,
-        ))
+        let info = CrtcInfo {
+            config: CrtcConfig {
+                x: reply.x,
+                y: reply.y,
+                mode: reply.mode,
+                rotation: reply.rotation,
+                outputs: reply.outputs,
+            },
+            size: Size {
+                width: reply.width,
+                height: reply.height,
+            },
+            rotations: reply.rotations,
+            outputs: reply.possible,
+        };
+
+        let time = reply.timestamp;
+
+        tracing::debug!("Reply get crtc 0x{crtc:x?} info {info:?}, time {time}");
+
+        Ok((info, time))
     }
 
-    pub async fn set_crtc_config(&self, crtc: &CrtcInfo) -> Result<u32> {
+    async fn set_crtc_config(
+        &self,
+        crtc: u32,
+        time: u32,
+        conf_time: u32,
+        config: &CrtcConfig,
+    ) -> Result<u32> {
+        tracing::debug!(
+            "Request set crtc 0x{crtc:x?} config {config:?}, time {time}, conf_time {conf_time}"
+        );
+
         let reply = self
             .conn
             .randr_set_crtc_config(
-                crtc.id,
-                crtc.time,
-                crtc.time,
-                crtc.rect.left,
-                crtc.rect.top,
-                crtc.mode,
-                crtc.rotation,
-                &crtc.outputs,
+                crtc,
+                time,
+                conf_time,
+                config.x,
+                config.y,
+                config.mode,
+                config.rotation,
+                &config.outputs,
             )
             .await?
             .reply()
             .await?;
 
-        Ok(reply.timestamp)
+        let time = reply.timestamp;
+
+        tracing::debug!("Reply set crtc 0x{crtc:x?} config, time {time}");
+
+        Ok(time)
     }
 
-    pub async fn crtc_panning(&self, id: u32) -> Result<CrtcPan> {
-        let reply = self.conn.randr_get_panning(id).await?.reply().await?;
+    async fn find_builtin(&self, window: u32) -> Result<(u32, u32, u32)> {
+        let (res, _time, conf_time) = self.get_screen_resources(window).await?;
 
-        Ok(CrtcPan::new(
-            reply.timestamp,
-            id,
-            Rect::new(reply.left, reply.top, reply.width, reply.height),
-            Rect::new(
-                reply.track_left,
-                reply.track_top,
-                reply.track_width,
-                reply.track_height,
-            ),
-            Border::new(
-                reply.border_left,
-                reply.border_top,
-                reply.border_right,
-                reply.border_bottom,
-            ),
-        ))
-    }
-
-    pub async fn set_crtc_panning(&self, crtc: &CrtcPan) -> Result<u32> {
-        let reply = self
-            .conn
-            .randr_set_panning(
-                crtc.id,
-                crtc.time,
-                crtc.rect.left,
-                crtc.rect.top,
-                crtc.rect.width,
-                crtc.rect.height,
-                crtc.track.left,
-                crtc.track.top,
-                crtc.track.width,
-                crtc.track.height,
-                crtc.border.left,
-                crtc.border.top,
-                crtc.border.right,
-                crtc.border.bottom,
-            )
-            .await?
-            .reply()
-            .await?;
-
-        Ok(reply.timestamp)
-    }
-
-    pub async fn builtin_crtc(&self) -> Result<(u32, u32)> {
-        let monitors = self.monitors_info().await?;
-
-        let (time, outputs) = if let Some(monitor) = monitors
-            .into_iter()
-            .find(|monitor| monitor.name.starts_with("LVDS") || monitor.name.starts_with("eDP"))
-        {
-            (monitor.time, monitor.outputs)
-        } else {
-            let screen = self.screen_info(None).await?;
-            (screen.time, screen.outputs)
-        };
-
-        for id in outputs {
-            let output = self.output_info(time, id).await?;
-            if output.name.starts_with("LVDS") || output.name.starts_with("eDP") {
-                if let Some(id) = output.crtc {
-                    return Ok((output.time, id));
+        for output in res.outputs {
+            let (info, time) = self.get_output_info(output, conf_time).await?;
+            if let Some(crtc) = &info.crtc {
+                if res.crtcs.contains(crtc)
+                    && (info.name.starts_with("LVDS") || info.name.starts_with("eDP"))
+                {
+                    return Ok((*crtc, output, time));
                 }
             }
         }
 
-        Err(Error::NotFound)
+        Err(Error::XNotFound)
     }
 
-    pub async fn crtc_orientation(&self, time: u32, id: u32) -> Result<Orientation> {
-        let crtc = self.crtc_info(time, id).await?;
+    pub async fn screen_orientation(&self, screen: Option<u32>) -> Result<Orientation> {
+        let window = screen.unwrap_or(self.screen.root);
 
-        let orientation = rotation_to_orientation(crtc.rotation)?;
+        //let (info, ..) = self.get_screen_info(window).await?;
+        let (crtc, _, time) = self.find_builtin(window).await?;
+        let (info, ..) = self.get_crtc_info(crtc, time).await?;
 
-        tracing::debug!("{orientation:?}");
-
-        Ok(orientation)
+        rotation_to_orientation(info.config.rotation)
     }
 
-    pub async fn set_crtc_orientation(
+    pub async fn set_screen_orientation(
         &self,
-        time: u32,
-        id: u32,
+        screen: Option<u32>,
         orientation: Orientation,
-    ) -> Result<bool> {
+    ) -> Result<()> {
+        let window = screen.unwrap_or(self.screen.root);
+
+        //let (info, root, time, conf_time) = self.get_screen_info(window).await?;
+        let (crtc, output, time) = self.find_builtin(window).await?;
+        let (crtc_info, conf_time) = self.get_crtc_info(crtc, time).await?;
+
         let rotation = orientation_to_rotation(orientation);
 
-        let crtc = self.crtc_info(time, id).await?;
-
-        tracing::debug!("crtc: {crtc:?}");
-
-        if crtc.rotation == rotation {
-            return Ok(false);
+        if rotation == crtc_info.config.rotation {
+            return Ok(());
         }
 
-        let pan = self.crtc_panning(id).await?;
+        let had_orientation = rotation_to_orientation(crtc_info.config.rotation)?;
+        let had_orientation_type = had_orientation.get_type();
+        let orientation_type = orientation.get_type();
 
-        tracing::debug!("pan: {pan:?}");
+        let mut crtc_info = crtc_info;
+        crtc_info.config.rotation = rotation;
 
-        let mut crtc = crtc;
+        if orientation_type != had_orientation_type {
+            let (output_info, ..) = self.get_output_info(output, conf_time).await?;
 
-        crtc.rotation = rotation;
+            let mut size = crtc_info.size;
+            let mut size_mm = output_info.size_mm;
 
-        self.set_crtc_config(&crtc).await?;
+            if size.width > size.height {
+                size.height = size.width;
+            } else {
+                size.width = size.height;
+            }
 
-        let pan = self.crtc_panning(id).await?;
+            if size_mm.width > size_mm.height {
+                size_mm.height = size_mm.width;
+            } else {
+                size_mm.width = size_mm.height;
+            }
 
-        tracing::debug!("pan: {pan:?}");
+            self.set_screen_size(window, &size, &size_mm).await?;
+        }
 
-        Ok(true)
+        //let _ = self.set_screen_config(root, time, conf_time, &info).await?;
+        self.set_crtc_config(crtc, time, conf_time, &crtc_info.config)
+            .await?;
+
+        if orientation_type != had_orientation_type {
+            let (output_info, ..) = self.get_output_info(output, conf_time).await?;
+
+            let mut size = crtc_info.size;
+            let mut size_mm = output_info.size_mm;
+
+            size.swap();
+            size_mm.swap();
+
+            self.set_screen_size(window, &size, &size_mm).await?;
+        }
+
+        Ok(())
     }
+}
+
+#[derive(Clone, Debug)]
+pub struct ScreenResources {
+    pub crtcs: Vec<u32>,
+    pub outputs: Vec<u32>,
+    pub modes: Vec<ModeInfo>,
+}
+
+#[derive(Clone, Debug)]
+pub struct ScreenConfig {
+    pub size_id: u16,
+    pub rotation: Rotation,
+    pub rate: u16,
 }
 
 #[derive(Clone, Debug)]
 pub struct ScreenInfo {
-    pub time: u32,
-    pub id: u32,
-    pub outputs: Vec<u32>,
-    pub crtcs: Vec<u32>,
-}
-
-#[derive(Clone, Debug)]
-pub struct MonitorInfo {
-    pub time: u32,
-    pub id: u32,
-    pub name: String,
-    pub primary: bool,
-    pub auto: bool,
-    pub outputs: Vec<u32>,
+    pub config: ScreenConfig,
+    pub rotations: Rotation,
+    pub sizes: Vec<ScreenSize>,
+    pub rates: Vec<RefreshRates>,
 }
 
 #[derive(Clone, Debug)]
 pub struct OutputInfo {
-    pub time: u32,
-    pub id: u32,
     pub name: String,
+    pub size_mm: Size<u32>,
     pub crtc: Option<u32>,
     pub crtcs: Vec<u32>,
 }
 
-#[derive(Clone, Copy, Debug)]
-pub struct Rect<O> {
-    pub left: O,
-    pub top: O,
-    pub width: u16,
-    pub height: u16,
+#[derive(Clone, Debug)]
+pub struct CrtcConfig {
+    pub x: i16,
+    pub y: i16,
+    pub mode: u32,
+    pub rotation: Rotation,
+    pub outputs: Vec<u32>,
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct Border<T> {
-    pub left: T,
-    pub top: T,
-    pub right: T,
-    pub bottom: T,
+pub struct Size<T> {
+    pub width: T,
+    pub height: T,
+}
+
+impl<T> Size<T> {
+    pub fn swap(&mut self) {
+        core::mem::swap(&mut self.width, &mut self.height);
+    }
 }
 
 #[derive(Clone, Debug)]
 pub struct CrtcInfo {
-    pub time: u32,
-    pub id: u32,
-    pub rect: Rect<i16>,
-    pub mode: u32,
-    pub rotation: Rotation,
+    pub config: CrtcConfig,
+    pub size: Size<u16>,
+    pub rotations: Rotation,
     pub outputs: Vec<u32>,
-    pub possible: Vec<u32>,
-}
-
-#[derive(Clone, Debug)]
-pub struct CrtcPan {
-    pub time: u32,
-    pub id: u32,
-    pub rect: Rect<u16>,
-    pub track: Rect<u16>,
-    pub border: Border<i16>,
-}
-
-impl<O> Rect<O> {
-    pub fn new(left: O, top: O, width: u16, height: u16) -> Self {
-        Self {
-            left,
-            top,
-            width,
-            height,
-        }
-    }
-}
-
-impl<T> Border<T> {
-    pub fn new(left: T, top: T, right: T, bottom: T) -> Self {
-        Self {
-            left,
-            top,
-            right,
-            bottom,
-        }
-    }
-}
-
-impl ScreenInfo {
-    pub fn new(time: u32, id: u32, outputs: Vec<u32>, crtcs: Vec<u32>) -> Self {
-        Self {
-            time,
-            id,
-            outputs,
-            crtcs,
-        }
-    }
-}
-
-impl MonitorInfo {
-    pub fn new(
-        time: u32,
-        id: u32,
-        name: impl Into<String>,
-        primary: bool,
-        auto: bool,
-        outputs: Vec<u32>,
-    ) -> Self {
-        Self {
-            time,
-            id,
-            name: name.into(),
-            primary,
-            auto,
-            outputs,
-        }
-    }
-}
-
-impl OutputInfo {
-    pub fn new(
-        time: u32,
-        id: u32,
-        name: impl Into<String>,
-        crtc: Option<u32>,
-        crtcs: Vec<u32>,
-    ) -> Self {
-        Self {
-            time,
-            id,
-            name: name.into(),
-            crtc,
-            crtcs,
-        }
-    }
-}
-
-impl CrtcInfo {
-    pub fn new(
-        time: u32,
-        id: u32,
-        rect: Rect<i16>,
-        mode: u32,
-        rotation: Rotation,
-        outputs: Vec<u32>,
-        possible: Vec<u32>,
-    ) -> Self {
-        Self {
-            time,
-            id,
-            rect,
-            mode,
-            rotation,
-            outputs,
-            possible,
-        }
-    }
-}
-
-impl CrtcPan {
-    pub fn new(time: u32, id: u32, rect: Rect<u16>, track: Rect<u16>, border: Border<i16>) -> Self {
-        Self {
-            time,
-            id,
-            rect,
-            track,
-            border,
-        }
-    }
 }
 
 fn rotation_to_orientation(rotation: Rotation) -> Result<Orientation> {

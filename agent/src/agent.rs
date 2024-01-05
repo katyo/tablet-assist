@@ -246,8 +246,7 @@ impl Agent {
             if service.has_orientation().await? {
                 service.orientation().await?
             } else if let Some(xclient) = &xclient {
-                let (time, crtc) = xclient.builtin_crtc().await?;
-                xclient.crtc_orientation(time, crtc).await?
+                xclient.screen_orientation(None).await?
             } else {
                 Orientation::default()
             }
@@ -415,8 +414,7 @@ impl Agent {
         tracing::debug!("Apply orientation: {orientation:?}");
 
         if let Some(xclient) = &self.state.xclient {
-            let (time, crtc) = xclient.builtin_crtc().await?;
-            if let Err(error) = xclient.set_crtc_orientation(time, crtc, orientation).await {
+            if let Err(error) = xclient.set_screen_orientation(None, orientation).await {
                 tracing::error!("Error while rotating screen: {error}");
             }
         }

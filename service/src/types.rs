@@ -14,6 +14,31 @@ pub enum Orientation {
     BottomUp = 3,
 }
 
+impl Orientation {
+    pub fn get_type(self) -> OrientationType {
+        self.into()
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, Type, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+#[repr(u8)]
+pub enum OrientationType {
+    #[default]
+    Landscape = 0,
+    Portrait = 1,
+}
+
+impl From<Orientation> for OrientationType {
+    fn from(orientation: Orientation) -> Self {
+        if matches!(orientation, Orientation::TopUp | Orientation::BottomUp) {
+            Self::Landscape
+        } else {
+            Self::Portrait
+        }
+    }
+}
+
 impl From<Orientation> for u8 {
     fn from(orientation: Orientation) -> Self {
         orientation as _
