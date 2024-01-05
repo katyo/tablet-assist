@@ -8,11 +8,13 @@ use x11rb::{
             RefreshRates, Rotation, ScreenSize,
         },
         xinput::{ChangeDevicePropertyAux, ConnectionExt as InputConnectionExt},
-        xproto::{ConnectionExt as ProtoConnectionExt, PropMode, Screen},
+        xproto::{Atom, ConnectionExt as ProtoConnectionExt, PropMode, Screen},
     },
     rust_connection::RustConnection,
 };
 use x11rb_async as x11rb;
+
+const ANY_PROPERTY_TYPE: Atom = 0;
 
 pub struct XClient {
     /// Keep connection background task running
@@ -20,6 +22,8 @@ pub struct XClient {
     task: Task<()>,
     conn: RustConnection,
     screen: Screen,
+    device_enabled_prop: Atom,
+    coord_trans_mat_prop: Atom,
 }
 
 impl XClient {
@@ -44,12 +48,20 @@ impl XClient {
 
         tracing::debug!("Screen: {}", screen.root);
 
-        Ok(Self { task, conn, screen })
+        let device_enabled_prop = Self::atom(&conn, "Device Enabled").await?;
+        let coord_trans_mat_prop = Self::atom(&conn, "Coordinate Transformation Matrix").await?;
+
+        Ok(Self {
+            task,
+            conn,
+            screen,
+            device_enabled_prop,
+            coord_trans_mat_prop,
+        })
     }
 
-    async fn atom(&self, name: impl AsRef<[u8]>) -> Result<u32> {
-        Ok(self
-            .conn
+    async fn atom(conn: &RustConnection, name: impl AsRef<[u8]>) -> Result<u32> {
+        Ok(conn
             .intern_atom(true, name.as_ref())
             .await?
             .reply()
@@ -91,11 +103,9 @@ impl XClient {
 
     /*
     pub async fn input_device_status(&self, device: &DeviceId) -> Result<bool> {
-        let prop = self.atom("Device Enabled").await?;
-
         let reply = self
             .conn
-            .xinput_get_device_property(prop, ANY_PROPERTY_TYPE, 0, 1, device.id as _, false)
+            .xinput_get_device_property(self.device_enabled_prop, ANY_PROPERTY_TYPE, 0, 1, device.id as _, false)
             .await?
             .reply()
             .await?;
@@ -108,25 +118,39 @@ impl XClient {
     }
     */
 
-    pub async fn switch_input_device(&self, device: &DeviceId, enable: bool) -> Result<()> {
-        let prop = self.atom("Device Enabled").await?;
-
+    pub async fn switch_input_device(&self, device: u32, enable: bool) -> Result<()> {
         let reply = self
             .conn
-            .xinput_get_device_property(prop, ANY_PROPERTY_TYPE, 0, 1, device.id as _, false)
+            .xinput_get_device_property(
+                self.device_enabled_prop,
+                ANY_PROPERTY_TYPE,
+                0,
+                1,
+                device as _,
+                false,
+            )
             .await?
             .reply()
             .await?;
 
         let type_ = reply.type_;
+        let enabled = reply
+            .items
+            .as_data8()
+            .map(|data| if data.is_empty() { false } else { data[0] == 1 })
+            .unwrap_or_default();
+
+        if enable == enabled {
+            return Ok(());
+        }
 
         let value = ChangeDevicePropertyAux::Data8(vec![if enable { 1 } else { 0 }]);
 
         self.conn
             .xinput_change_device_property(
-                prop,
+                self.device_enabled_prop,
                 type_,
-                device.id as _,
+                device as _,
                 PropMode::REPLACE,
                 1,
                 &value,
@@ -136,6 +160,88 @@ impl XClient {
         Ok(())
     }
 
+    pub async fn set_input_device_orientation(
+        &self,
+        device: u32,
+        orientation: Orientation,
+    ) -> Result<()> {
+        let reply = self
+            .conn
+            .xinput_get_device_property(
+                self.coord_trans_mat_prop,
+                ANY_PROPERTY_TYPE,
+                0,
+                core::mem::size_of::<f32>() as u32 * 9,
+                device as _,
+                false,
+            )
+            .await?
+            .reply()
+            .await?;
+
+        let type_ = reply.type_;
+        let had_matrix = reply
+            .items
+            .as_data32()
+            .and_then(|data| {
+                let mat: &[u32; 9] = data.as_slice().try_into().ok()?;
+                let mat: &[f32; 9] = unsafe { &*(mat as *const _ as *const _) };
+                Some(mat)
+            })
+            .ok_or_else(|| Error::XNotFound)?;
+
+        let matrix = orientation_to_matrix(orientation);
+
+        if had_matrix == matrix {
+            return Ok(());
+        }
+
+        let value = ChangeDevicePropertyAux::Data32({
+            let mat: &[u32; 9] = unsafe { &*(matrix as *const _ as *const _) };
+            mat.into()
+        });
+
+        self.conn
+            .xinput_change_device_property(
+                self.coord_trans_mat_prop,
+                type_,
+                device as _,
+                PropMode::REPLACE,
+                9,
+                &value,
+            )
+            .await?;
+
+        Ok(())
+    }
+}
+
+fn orientation_to_matrix(orientation: Orientation) -> &'static [f32; 9] {
+    match orientation {
+        Orientation::TopUp => &[
+            1.0, 0.0, 0.0, //
+            0.0, 1.0, 0.0, //
+            0.0, 0.0, 1.0, //
+        ],
+        Orientation::LeftUp => &[
+            0.0, -1.0, 1.0, //
+            1.0, 0.0, 0.0, //
+            0.0, 0.0, 1.0, //
+        ],
+        Orientation::RightUp => &[
+            0.0, 1.0, 0.0, //
+            -1.0, 0.0, 1.0, //
+            0.0, 0.0, 1.0, //
+        ],
+        Orientation::BottomUp => &[
+            -1.0, 0.0, 1.0, //
+            0.0, -1.0, 1.0, //
+            0.0, 0.0, 1.0, //
+        ],
+    }
+}
+
+impl XClient {
     async fn get_screen_resources(&self, window: u32) -> Result<(ScreenResources, u32, u32)> {
         tracing::debug!("Request get screen 0x{window:x?} resources");
 
@@ -522,5 +628,3 @@ fn orientation_to_rotation(orientation: Orientation) -> Rotation {
         Orientation::RightUp => Rotation::ROTATE270,
     }
 }
-
-const ANY_PROPERTY_TYPE: x11rb::protocol::xproto::Atom = 0;

@@ -1,6 +1,5 @@
 use crate::{
-    Config, ConfigHolder, DeviceAction, DeviceConfig, DeviceId, Orientation, Result, ServiceProxy,
-    XClient,
+    Config, ConfigHolder, DeviceConfig, DeviceId, Orientation, Result, ServiceProxy, XClient,
 };
 use smol::{lock::RwLock, spawn, stream::StreamExt, Task};
 use std::sync::Arc;
@@ -123,18 +122,17 @@ impl Agent {
         })
     }
 
-    /// Get input device action in tablet mode
-    async fn input_device_action(&self, device: DeviceId) -> DeviceAction {
-        self.with_config(|config| config.tablet_mode.get_device(&device).action)
+    /// Get input device config
+    async fn input_device_config(&self, device: DeviceId) -> DeviceConfig {
+        self.with_config(|config| config.get_device(&device).clone())
             .await
     }
 
-    /// Set input device action in tablet mode
-    async fn set_input_device_action(&self, device: DeviceId, action: DeviceAction) {
+    /// Set input device config
+    async fn set_input_device(&self, device: DeviceId, device_config: DeviceConfig) {
         self.with_config_mut(|config| {
             config
-                .tablet_mode
-                .set_device(&device, DeviceConfig { action })
+                .set_device(&device, device_config)
         })
         .await;
     }
@@ -318,34 +316,26 @@ impl Agent {
 
         tracing::debug!("Switch tablet mode: {mode}");
 
-        let device_actions = self
+        let devices_to_switch = self
             .with_config(|config| {
                 config
-                    .tablet_mode
                     .device
                     .iter()
-                    .filter(|(_, cfg)| cfg.action != DeviceAction::Skip)
-                    .map(|(id, cfg)| (id.clone(), cfg.action))
+                    .filter(|(_, config)| !config.tablet || !config.laptop)
+                    .map(if mode {
+                        |(device, config): (&DeviceId, &DeviceConfig)| (device.id, config.tablet)
+                    } else {
+                        |(device, config): (&DeviceId, &DeviceConfig)| (device.id, config.laptop)
+                    })
                     .collect::<Vec<_>>()
             })
             .await;
 
         // On/off devices
         if let Some(xclient) = &self.state.xclient {
-            if mode {
-                // in tablet mode
-                for (id, action) in device_actions {
-                    xclient
-                        .switch_input_device(&id, action == DeviceAction::Enable)
-                        .await?;
-                }
-            } else {
-                // in laptop mode
-                for (id, action) in device_actions {
-                    xclient
-                        .switch_input_device(&id, action == DeviceAction::Disable)
-                        .await?;
-                }
+            // in tablet mode
+            for (id, action) in devices_to_switch {
+                xclient.switch_input_device(id, action).await?;
             }
         }
 
@@ -413,9 +403,26 @@ impl Agent {
 
         tracing::debug!("Apply orientation: {orientation:?}");
 
+        let devices_to_rotate = self
+            .with_config(|config| {
+                config
+                    .device
+                    .iter()
+                    .filter(|(_, config)| config.rotate)
+                    .map(|(device, _)| device.id)
+                    .collect::<Vec<_>>()
+            })
+            .await;
+
         if let Some(xclient) = &self.state.xclient {
             if let Err(error) = xclient.set_screen_orientation(None, orientation).await {
                 tracing::error!("Error while rotating screen: {error}");
+            }
+
+            for id in devices_to_rotate {
+                if let Err(error) = xclient.set_input_device_orientation(id, orientation).await {
+                    tracing::error!("Error while rotating input device: {error}");
+                }
             }
         }
 

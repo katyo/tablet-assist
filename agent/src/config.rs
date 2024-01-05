@@ -1,4 +1,4 @@
-use crate::{DeviceAction, DeviceId, Orientation, Result};
+use crate::{DeviceConfig, DeviceId, Orientation, Result};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -12,44 +12,11 @@ pub struct Config {
     pub tablet_mode: TabletModeConfig,
     /// Orientation config
     pub orientation: OrientationConfig,
-}
-
-/// Tablet mode config
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct TabletModeConfig {
-    /// Switch to tablet mode and back using auto-detection
-    pub auto: bool,
-    /// Tablet mode for manual setting
-    pub manual: bool,
-    /// Device configs for tablet mode
+    /// Input devices configs
     pub device: HashMap<DeviceId, DeviceConfig>,
-    /// Show cursor in tablet mode
-    pub cursor: bool,
 }
 
-/// Device config
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct DeviceConfig {
-    /// Device action
-    pub action: DeviceAction,
-}
-
-/// Orientation config
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct OrientationConfig {
-    /// Set orientation using auto-detection
-    pub auto: bool,
-    /// Orientation for manual setting
-    pub manual: Orientation,
-}
-
-impl DeviceConfig {
-    pub const DEFAULT: Self = Self {
-        action: DeviceAction::Skip,
-    };
-}
-
-impl TabletModeConfig {
+impl Config {
     pub fn get_device(&self, id: &DeviceId) -> &DeviceConfig {
         self.device.get(id).unwrap_or(&DeviceConfig::DEFAULT)
     }
@@ -61,6 +28,26 @@ impl TabletModeConfig {
             self.device.remove(id);
         }
     }
+}
+
+/// Tablet mode config
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct TabletModeConfig {
+    /// Switch to tablet mode and back using auto-detection
+    pub auto: bool,
+    /// Tablet mode for manual setting
+    pub manual: bool,
+    /// Show cursor in tablet mode
+    pub cursor: bool,
+}
+
+/// Orientation config
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct OrientationConfig {
+    /// Set orientation using auto-detection
+    pub auto: bool,
+    /// Orientation for manual setting
+    pub manual: Orientation,
 }
 
 /// Configuration holder

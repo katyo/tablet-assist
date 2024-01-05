@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 pub use tablet_assist_service::Orientation;
 use zbus::zvariant::{OwnedValue, Type, Value};
 
-#[derive(Debug, Clone, Default, Type, Value, OwnedValue, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Type, Value, OwnedValue)]
 pub struct DeviceId {
     pub id: u32,
     pub name: String,
@@ -66,32 +66,21 @@ impl<'de> Deserialize<'de> for DeviceId {
     }
 }
 
-#[derive(
-    Debug, Clone, Copy, Default, Type, Value, OwnedValue, PartialEq, Serialize, Deserialize,
-)]
-#[zvariant(signature = "s")]
-#[serde(rename_all = "kebab-case")]
-#[repr(u8)]
-pub enum DeviceAction {
-    #[default]
-    Skip = 0,
-    Disable = 1,
-    Enable = 2,
+/// Device config
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, Type, Value, OwnedValue)]
+pub struct DeviceConfig {
+    /// Enable in tablet mode
+    pub tablet: bool,
+    /// Enable in laptop mode
+    pub laptop: bool,
+    /// Rotate with screen
+    pub rotate: bool,
 }
 
-impl From<DeviceAction> for u8 {
-    fn from(orientation: DeviceAction) -> Self {
-        orientation as _
-    }
-}
-
-impl TryFrom<u8> for DeviceAction {
-    type Error = u8;
-    fn try_from(raw: u8) -> core::result::Result<Self, Self::Error> {
-        if raw >= Self::Skip as _ && raw <= Self::Enable as _ {
-            Ok(unsafe { *(&raw as *const _ as *const _) })
-        } else {
-            Err(raw)
-        }
-    }
+impl DeviceConfig {
+    pub const DEFAULT: Self = Self {
+        tablet: true,
+        laptop: true,
+        rotate: false,
+    };
 }
