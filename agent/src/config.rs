@@ -1,4 +1,4 @@
-use crate::{InputDeviceConfig, InputDeviceInfo, Orientation, Result};
+use crate::{InputDeviceInfo, Orientation, Result};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -9,10 +9,13 @@ use std::{
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Config {
     /// Tablet mode config
+    #[serde(default)]
     pub tablet_mode: TabletModeConfig,
     /// Orientation config
+    #[serde(default)]
     pub orientation: OrientationConfig,
     /// Input devices configs
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub device: HashMap<InputDeviceInfo, InputDeviceConfig>,
 }
 
@@ -41,10 +44,13 @@ impl Config {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TabletModeConfig {
     /// Switch to tablet mode and back using auto-detection
+    #[serde(default = "yes")]
     pub auto: bool,
     /// Tablet mode for manual setting
+    #[serde(default)]
     pub manual: bool,
     /// Show cursor in tablet mode
+    #[serde(default)]
     pub cursor: bool,
 }
 
@@ -52,9 +58,37 @@ pub struct TabletModeConfig {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct OrientationConfig {
     /// Set orientation using auto-detection
+    #[serde(default = "yes")]
     pub auto: bool,
     /// Orientation for manual setting
+    #[serde(default)]
     pub manual: Orientation,
+}
+
+/// Device config
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+pub struct InputDeviceConfig {
+    /// Enable in tablet mode
+    #[serde(default = "yes")]
+    pub tablet: bool,
+    /// Enable in laptop mode
+    #[serde(default = "yes")]
+    pub laptop: bool,
+    /// Rotate with screen
+    #[serde(default)]
+    pub rotate: bool,
+}
+
+impl InputDeviceConfig {
+    pub const DEFAULT: Self = Self {
+        tablet: true,
+        laptop: true,
+        rotate: false,
+    };
+}
+
+fn yes() -> bool {
+    true
 }
 
 /// Configuration holder

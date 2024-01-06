@@ -218,22 +218,3 @@ impl<'de> Deserialize<'de> for InputDeviceInfo {
         deserializer.deserialize_str(DeviceIdVisitor)
     }
 }
-
-/// Device config
-#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize, Type, Value, OwnedValue)]
-pub struct InputDeviceConfig {
-    /// Enable in tablet mode
-    pub tablet: bool,
-    /// Enable in laptop mode
-    pub laptop: bool,
-    /// Rotate with screen
-    pub rotate: bool,
-}
-
-impl InputDeviceConfig {
-    pub const DEFAULT: Self = Self {
-        tablet: true,
-        laptop: true,
-        rotate: false,
-    };
-}

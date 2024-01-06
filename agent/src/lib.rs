@@ -35,17 +35,6 @@ pub trait Agent {
     #[dbus_proxy(property)]
     fn input_devices(&self) -> zbus::fdo::Result<Vec<InputDeviceInfo>>;
 
-    /// Get input device config
-    fn input_device_config(&self, device: &InputDeviceInfo)
-        -> zbus::fdo::Result<InputDeviceConfig>;
-
-    /// Set input device config
-    fn set_input_device_config(
-        &self,
-        device: &InputDeviceInfo,
-        config: &InputDeviceConfig,
-    ) -> zbus::fdo::Result<()>;
-
     /// Whether orientation detection available
     #[dbus_proxy(property)]
     fn orientation_detection(&self) -> zbus::fdo::Result<bool>;
