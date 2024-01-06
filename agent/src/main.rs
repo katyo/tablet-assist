@@ -10,6 +10,7 @@ mod config;
 mod error;
 mod types;
 mod xclient;
+mod input;
 
 use agent::*;
 use args::*;
@@ -17,6 +18,7 @@ use config::*;
 use error::*;
 use types::*;
 use xclient::*;
+use input::*;
 
 #[main]
 async fn main() -> Result<()> {

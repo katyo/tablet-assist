@@ -1,6 +1,6 @@
 use crate::{
     Config, ConfigHolder, InputDeviceConfig, InputDeviceInfo, Orientation, Result, ServiceProxy,
-    XClient,
+    XClient, InputDevice,
 };
 use smol::{lock::RwLock, spawn, stream::StreamExt, Task};
 use std::sync::Arc;
@@ -16,6 +16,8 @@ struct State {
     config: RwLock<ConfigHolder<Config>>,
     /// X server client
     xclient: Option<XClient>,
+    /// Input devices
+    input_devices: RwLock<Vec<InputDevice>>,
     /// Current tablet mode
     tablet_mode: RwLock<bool>,
     /// Keep tablet mode detection task running
@@ -121,18 +123,6 @@ impl Agent {
         } else {
             Default::default()
         })
-    }
-
-    /// Get input device config
-    async fn input_device_config(&self, device: InputDeviceInfo) -> InputDeviceConfig {
-        self.with_config(|config| config.get_device(&device).clone())
-            .await
-    }
-
-    /// Set input device config
-    async fn set_input_device(&self, device: InputDeviceInfo, device_config: InputDeviceConfig) {
-        self.with_config_mut(|config| config.set_device(&device, device_config))
-            .await;
     }
 
     /// Whether orientation detection available
@@ -256,6 +246,7 @@ impl Agent {
                 service_task: RwLock::new(None),
                 config: RwLock::new(config),
                 xclient,
+                input_devices: RwLock::new(Default::default()),
                 tablet_mode: RwLock::new(tablet_mode),
                 tablet_mode_task: RwLock::new(None),
                 orientation: RwLock::new(orientation),
@@ -288,6 +279,8 @@ impl Agent {
 
         *self.state.interface.write().await = Some(interface);
 
+        self.update_input_devices().await?;
+
         self.apply_tablet_mode(None).await?;
         self.apply_orientation(None).await?;
 
@@ -295,6 +288,34 @@ impl Agent {
         self.detect_orientation(auto_orientation).await?;
 
         self.monitor_service(true).await
+    }
+
+    async fn update_input_devices(&self) -> Result<()> {
+        let mut input_devices = Vec::new();
+
+        if let Some(xclient) = &self.state.xclient {
+            input_devices.extend(xclient.input_devices().await?
+                                 .into_iter().map(|info| InputDevice::new(&self, info)));
+        }
+
+        let iface = self.state.interface.read().await;
+        let conn = iface.as_ref().unwrap().signal_context().connection();
+
+        { // remove devices from bus
+            for device in self.state.input_devices.read().await.iter() {
+                device.remove(conn).await?;
+            }
+        }
+
+        { // add devices to bus
+            for device in &input_devices {
+                device.add(conn).await?;
+            }
+
+            *self.state.input_devices.write().await = input_devices;
+        }
+
+        Ok(())
     }
 
     async fn apply_tablet_mode(&self, mode: Option<bool>) -> Result<()> {
@@ -346,6 +367,28 @@ impl Agent {
 
         self.tablet_mode_changed(sigctx).await?;
 
+        Ok(())
+    }
+
+    pub async fn update_input_device_state(&self, id: u32, enable: bool, is_tablet_mode: bool) -> Result<()> {
+        let tablet_mode = { *self.state.tablet_mode.read().await };
+        if is_tablet_mode == tablet_mode {
+            if let Some(xclient) = &self.state.xclient {
+                xclient.switch_input_device(id, enable).await?;
+            }
+        }
+        Ok(())
+    }
+
+    pub async fn update_input_device_orientation(&self, id: u32, enable: bool) -> Result<()> {
+        let orientation = if enable {
+            *self.state.orientation.read().await
+        } else {
+            Default::default()
+        };
+        if let Some(xclient) = &self.state.xclient {
+            xclient.set_input_device_orientation(id, orientation).await?;
+        }
         Ok(())
     }
 

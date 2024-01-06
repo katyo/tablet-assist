@@ -4,7 +4,7 @@ mod types;
 
 pub use types::*;
 
-/// Tablet-mode watch service
+/// Tablet-mode assistance agent
 #[dbus_proxy(
     interface = "tablet.assist.Agent1",
     default_service = "tablet.assist.Agent",
@@ -65,4 +65,36 @@ pub trait Agent {
     /// Auto orientation change
     #[dbus_proxy(property)]
     fn set_auto_orientation(&self, enable: bool) -> zbus::fdo::Result<()>;
+}
+
+/// Input device control interface
+#[dbus_proxy(
+    interface = "tablet.assist.InputDevice1",
+    default_service = "tablet.assist.InputDevice",
+    default_path = "/tablet/assist/input_device",
+)]
+pub trait InputDevice {
+    /// Input device id
+    #[dbus_proxy(property)]
+    fn device_id(&self) -> zbus::fdo::Result<u32>;
+
+    /// Input device name
+    #[dbus_proxy(property)]
+    fn device_name(&self) -> zbus::fdo::Result<String>;
+
+    /// Input device type
+    #[dbus_proxy(property)]
+    fn device_type(&self) -> zbus::fdo::Result<InputDeviceType>;
+
+    /// Whether to enable device in tablet mode
+    #[dbus_proxy(property)]
+    fn enable_tablet(&self) -> zbus::fdo::Result<bool>;
+
+    /// Whether to enable device in laptop mode
+    #[dbus_proxy(property)]
+    fn enable_laptop(&self) -> zbus::fdo::Result<bool>;
+
+    /// Whether to change device orientation with screen
+    #[dbus_proxy(property)]
+    fn enable_rotation(&self) -> zbus::fdo::Result<bool>;
 }
