@@ -256,7 +256,7 @@ impl XClient {
 
         let value = ChangeDevicePropertyAux::Data32({
             let mat: &[u32; 9] = unsafe { &*(matrix as *const _ as *const _) };
-            mat.into()
+            (&mat[..]).into()
         });
 
         self.conn
