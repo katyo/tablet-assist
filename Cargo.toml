@@ -12,7 +12,7 @@ smol = "2"
 smol-potat = "1"
 async-signal = "0.2"
 signal-hook = "0.3"
-#zbus = "3"
+zbus = "3"
 dirs = "5"
 toml = "0.8"
 input = "0.8"
@@ -29,10 +29,6 @@ tablet-assist-agent.path = "agent"
 [workspace.dependencies.serde]
 version = "1"
 features = ["derive"]
-
-[workspace.dependencies.zbus]
-git = "https://github.com/katyo/zbus"
-branch = "derive-value-enum"
 
 [workspace.dependencies.tracing-subscriber]
 version = "0.3"

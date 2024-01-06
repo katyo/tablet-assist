@@ -1,14 +1,14 @@
 use serde::{Deserialize, Serialize};
 pub use tablet_assist_service::Orientation;
-use zbus::zvariant::{OwnedValue, Type, Value};
+use zbus::zvariant::{Type, Value, OwnedValue};
 
 macro_rules! enum_types {
-    ($( $(#[$($tmeta:meta)*])* $type:ident { $( $(#[$($vmeta:meta)*])* $var:ident, )* } )*) => {
+    ($( $(#[$($tmeta:meta)*])* $type:ident { $( $(#[$($vmeta:meta)*])* $var:ident = $val:literal, )* } )*) => {
         $(
             $(#[$($tmeta)*])*
-            #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Type, Value, OwnedValue, Serialize, Deserialize)]
+            #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Type, Serialize, Deserialize)]
             #[serde(rename_all = "kebab-case")]
-            #[zvariant(signature = "s", rename_all = "snake_case")]
+            #[zvariant(signature = "s")]
             #[repr(u8)]
             pub enum $type {
                 $(
@@ -30,7 +30,7 @@ macro_rules! enum_types {
                 fn from_str(s: &str) -> core::result::Result<Self, Self::Err> {
                     Ok(match s {
                         $(
-                            stringify!($var) => Self::$var,
+                            $val => Self::$var,
                         )*
                             _ => return Err(()),
                     })
@@ -41,7 +41,7 @@ macro_rules! enum_types {
                 fn as_ref(&self) -> &str {
                     match self {
                         $(
-                            Self::$var => stringify!($var),
+                            Self::$var => $val,
                         )*
                     }
                 }
@@ -50,6 +50,38 @@ macro_rules! enum_types {
             impl core::fmt::Display for $type {
                 fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
                     self.as_ref().fmt(f)
+                }
+            }
+
+            impl TryFrom<zbus::zvariant::Value<'_>> for $type {
+                type Error = zbus::zvariant::Error;
+
+                #[inline]
+                fn try_from(value: zbus::zvariant::Value<'_>) -> zbus::zvariant::Result<Self> {
+                    <&str>::try_from(&value)?.parse().map_err(|_| zbus::zvariant::Error::IncorrectType)
+                }
+            }
+
+            impl From<$type> for zbus::zvariant::Value<'_> {
+                #[inline]
+                fn from(e: $type) -> Self {
+                    <zbus::zvariant::Value as From<_>>::from(e.to_string())
+                }
+            }
+
+            impl TryFrom<zbus::zvariant::OwnedValue> for $type {
+                type Error = zbus::zvariant::Error;
+
+                #[inline]
+                fn try_from(value: zbus::zvariant::OwnedValue) -> zbus::zvariant::Result<Self> {
+                    <&str>::try_from(&value)?.parse().map_err(|_| zbus::zvariant::Error::IncorrectType)
+                }
+            }
+
+            impl From<$type> for zbus::zvariant::OwnedValue {
+                #[inline]
+                fn from(e: $type) -> Self {
+                    <zbus::zvariant::Value as From<_>>::from(e.to_string()).into()
                 }
             }
         )*
@@ -67,24 +99,24 @@ macro_rules! enum_types {
 enum_types! {
     /// Input device type
     InputDeviceType {
-        Keyboard,
-        Mouse,
-        Tablet,
-        TouchScreen,
-        TouchPad,
-        BarCode,
-        ButtonBox,
-        KnobBox,
-        OneKnob,
-        NineKnob,
-        TrackBall,
-        Quadrature,
-        IdModule,
-        SpaceBall,
-        DataGlove,
-        EyeTracker,
-        CursorKeys,
-        FootMouse,
+        Keyboard = "keyboard",
+        Mouse = "mouse",
+        Tablet = "tablet",
+        TouchScreen = "touchscreen",
+        TouchPad = "touchpad",
+        BarCode = "barcode",
+        ButtonBox = "buttonbox",
+        KnobBox = "knob-box",
+        OneKnob = "one-knob",
+        NineKnob = "nine-knob",
+        TrackBall = "trackball",
+        Quadrature = "quadrature",
+        IdModule = "in-module",
+        SpaceBall = "spaceball",
+        DataGlove = "dataglove",
+        EyeTracker = "eyetracker",
+        CursorKeys = "cursorkeys",
+        FootMouse = "footmouse",
     }
 }
 
