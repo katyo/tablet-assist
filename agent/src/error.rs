@@ -1,5 +1,3 @@
-use x11rb_async as x11rb;
-
 /// Result type
 pub type Result<T> = core::result::Result<T, Error>;
 
@@ -32,19 +30,7 @@ pub enum Error {
     NotFound,
     /// X connect error
     #[error("X connect error: {0}")]
-    XConnect(#[from] x11rb::errors::ConnectError),
-    /// X connection error
-    #[error("X connection error: {0}")]
-    XConnection(#[from] x11rb::errors::ConnectionError),
-    /// X reply error
-    #[error("X reply error: {0}")]
-    XReply(#[from] x11rb::errors::ReplyError),
-    /// X resource not found
-    #[error("X resource not found")]
-    XNotFound,
-    /// X invalid rotation
-    #[error("X bad rotation")]
-    XBadRotation,
+    XClient(#[from] crate::XError),
 }
 
 impl From<std::string::FromUtf8Error> for Error {
@@ -65,11 +51,7 @@ impl From<Error> for zbus::fdo::Error {
             Error::TomlSer(e) => Failed(e.to_string()),
             Error::Term => Failed("terminated".to_string()),
             Error::NotFound => Failed("not found".to_string()),
-            Error::XConnect(e) => Failed(e.to_string()),
-            Error::XConnection(e) => Failed(e.to_string()),
-            Error::XReply(e) => Failed(e.to_string()),
-            Error::XNotFound => Failed("x not found".to_string()),
-            Error::XBadRotation => Failed("x bad rotation".to_string()),
+            Error::XClient(e) => Failed(format!("XClient: {e}")),
         }
     }
 }
@@ -86,11 +68,7 @@ impl From<Error> for zbus::Error {
             Error::TomlSer(e) => Failure(e.to_string()),
             Error::Term => Failure("terminated".to_string()),
             Error::NotFound => Failure("not found".to_string()),
-            Error::XConnect(e) => Failure(e.to_string()),
-            Error::XConnection(e) => Failure(e.to_string()),
-            Error::XReply(e) => Failure(e.to_string()),
-            Error::XNotFound => Failure("x not found".to_string()),
-            Error::XBadRotation => Failure("x bad rotation".to_string()),
+            Error::XClient(e) => Failure(format!("XClient: {e}")),
         }
     }
 }

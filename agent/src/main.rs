@@ -9,14 +9,14 @@ mod args;
 mod config;
 mod error;
 mod types;
-mod xorg;
+mod xclient;
 
 use agent::*;
 use args::*;
 use config::*;
 use error::*;
 use types::*;
-use xorg::*;
+use xclient::*;
 
 #[main]
 async fn main() -> Result<()> {

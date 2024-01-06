@@ -1,4 +1,4 @@
-use crate::{DeviceId, Error, Orientation, Result};
+use crate::{DeviceId, Orientation};
 use smol::{spawn, Task};
 use x11rb::{
     connection::Connection,
@@ -13,6 +13,41 @@ use x11rb::{
     rust_connection::RustConnection,
 };
 use x11rb_async as x11rb;
+
+/// Result type
+type Result<T> = core::result::Result<T, XError>;
+
+/// Error type
+#[derive(thiserror::Error, Debug)]
+pub enum XError {
+    /// UTF-8 error
+    #[error("UTF8 error: {0}")]
+    Utf8(#[from] core::str::Utf8Error),
+    /// Connect error
+    #[error("Connect: {0}")]
+    Connect(#[from] x11rb::errors::ConnectError),
+    /// Connection error
+    #[error("Connection: {0}")]
+    Connection(#[from] x11rb::errors::ConnectionError),
+    /// Reply error
+    #[error("Reply: {0}")]
+    Reply(#[from] x11rb::errors::ReplyError),
+    /// Unsupported version
+    #[error("Resource not found")]
+    UnsupportedVersion(&'static str),
+    /// Resource not found
+    #[error("Resource not found")]
+    NotFound(&'static str),
+    /// Invalid rotation
+    #[error("Invalid rotation")]
+    InvalidRotation(Rotation),
+}
+
+impl From<std::string::FromUtf8Error> for XError {
+    fn from(error: std::string::FromUtf8Error) -> Self {
+        XError::Utf8(error.utf8_error())
+    }
+}
 
 const ANY_PROPERTY_TYPE: Atom = 0;
 
@@ -43,6 +78,18 @@ impl XClient {
             setup.protocol_major_version,
             setup.protocol_minor_version
         );
+
+        let reply = conn.randr_query_version(1, 6).await?.reply().await?;
+
+        if reply.major_version < 1 || reply.minor_version < 5 {
+            return Err(XError::UnsupportedVersion("randr"));
+        }
+
+        let reply = conn.xinput_get_extension_version(b"XInputExtension").await?.reply().await?;
+
+        if reply.server_major < 2 {
+            return Err(XError::UnsupportedVersion("xinput"));
+        }
 
         let screen = setup.roots[screen_num].clone();
 
@@ -188,7 +235,7 @@ impl XClient {
                 let mat: &[f32; 9] = unsafe { &*(mat as *const _ as *const _) };
                 Some(mat)
             })
-            .ok_or_else(|| Error::XNotFound)?;
+            .ok_or_else(|| XError::NotFound("coord transform matrix"))?;
 
         let matrix = orientation_to_matrix(orientation);
 
@@ -473,7 +520,7 @@ impl XClient {
             }
         }
 
-        Err(Error::XNotFound)
+        Err(XError::NotFound("builtin screen crtc/output"))
     }
 
     pub async fn screen_orientation(&self, screen: Option<u32>) -> Result<Orientation> {
@@ -616,7 +663,7 @@ fn rotation_to_orientation(rotation: Rotation) -> Result<Orientation> {
         Rotation::ROTATE90 => Orientation::LeftUp,
         Rotation::ROTATE180 => Orientation::BottomUp,
         Rotation::ROTATE270 => Orientation::RightUp,
-        _ => return Err(Error::XBadRotation),
+        _ => return Err(XError::InvalidRotation(rotation)),
     })
 }
 
