@@ -1,5 +1,6 @@
 use crate::{
-    Config, ConfigHolder, DeviceConfig, DeviceId, Orientation, Result, ServiceProxy, XClient,
+    Config, ConfigHolder, InputDeviceConfig, InputDeviceInfo, Orientation, Result, ServiceProxy,
+    XClient,
 };
 use smol::{lock::RwLock, spawn, stream::StreamExt, Task};
 use std::sync::Arc;
@@ -114,27 +115,24 @@ impl Agent {
 
     /// Get available input devices
     #[dbus_interface(property)]
-    async fn input_devices(&self) -> zbus::fdo::Result<Vec<DeviceId>> {
+    async fn input_devices(&self) -> zbus::fdo::Result<Vec<InputDeviceInfo>> {
         Ok(if let Some(xclient) = &self.state.xclient {
-            xclient.input_devices().await?
+            xclient.input_devices().await.map_err(crate::Error::from)?
         } else {
             Default::default()
         })
     }
 
     /// Get input device config
-    async fn input_device_config(&self, device: DeviceId) -> DeviceConfig {
+    async fn input_device_config(&self, device: InputDeviceInfo) -> InputDeviceConfig {
         self.with_config(|config| config.get_device(&device).clone())
             .await
     }
 
     /// Set input device config
-    async fn set_input_device(&self, device: DeviceId, device_config: DeviceConfig) {
-        self.with_config_mut(|config| {
-            config
-                .set_device(&device, device_config)
-        })
-        .await;
+    async fn set_input_device(&self, device: InputDeviceInfo, device_config: InputDeviceConfig) {
+        self.with_config_mut(|config| config.set_device(&device, device_config))
+            .await;
     }
 
     /// Whether orientation detection available
@@ -323,9 +321,13 @@ impl Agent {
                     .iter()
                     .filter(|(_, config)| !config.tablet || !config.laptop)
                     .map(if mode {
-                        |(device, config): (&DeviceId, &DeviceConfig)| (device.id, config.tablet)
+                        |(device, config): (&InputDeviceInfo, &InputDeviceConfig)| {
+                            (device.id, config.tablet)
+                        }
                     } else {
-                        |(device, config): (&DeviceId, &DeviceConfig)| (device.id, config.laptop)
+                        |(device, config): (&InputDeviceInfo, &InputDeviceConfig)| {
+                            (device.id, config.laptop)
+                        }
                     })
                     .collect::<Vec<_>>()
             })

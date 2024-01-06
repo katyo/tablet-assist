@@ -1,4 +1,4 @@
-use crate::{DeviceConfig, DeviceId, Orientation, Result};
+use crate::{InputDeviceConfig, InputDeviceInfo, Orientation, Result};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -13,16 +13,16 @@ pub struct Config {
     /// Orientation config
     pub orientation: OrientationConfig,
     /// Input devices configs
-    pub device: HashMap<DeviceId, DeviceConfig>,
+    pub device: HashMap<InputDeviceInfo, InputDeviceConfig>,
 }
 
 impl Config {
-    pub fn get_device(&self, id: &DeviceId) -> &DeviceConfig {
-        self.device.get(id).unwrap_or(&DeviceConfig::DEFAULT)
+    pub fn get_device(&self, id: &InputDeviceInfo) -> &InputDeviceConfig {
+        self.device.get(id).unwrap_or(&InputDeviceConfig::DEFAULT)
     }
 
-    pub fn set_device(&mut self, id: &DeviceId, config: DeviceConfig) {
-        if config != DeviceConfig::DEFAULT {
+    pub fn set_device(&mut self, id: &InputDeviceInfo, config: InputDeviceConfig) {
+        if config != InputDeviceConfig::DEFAULT {
             self.device.insert(id.clone(), config);
         } else {
             self.device.remove(id);
