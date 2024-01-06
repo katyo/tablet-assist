@@ -319,7 +319,10 @@ impl Agent {
     }
 
     async fn apply_tablet_mode(&self, mode: Option<bool>) -> Result<()> {
-        let had_mode = *self.state.tablet_mode.read().await;
+        let had_mode = {
+            let mode = self.state.tablet_mode.read().await;
+            *mode
+        };
 
         let mode = if let Some(mode) = mode {
             if had_mode == mode {
@@ -371,7 +374,10 @@ impl Agent {
     }
 
     pub async fn update_input_device_state(&self, id: u32, enable: bool, is_tablet_mode: bool) -> Result<()> {
-        let tablet_mode = { *self.state.tablet_mode.read().await };
+        let tablet_mode = {
+            let mode = self.state.tablet_mode.read().await;
+            *mode
+        };
         if is_tablet_mode == tablet_mode {
             if let Some(xclient) = &self.state.xclient {
                 xclient.switch_input_device(id, enable).await?;
@@ -382,7 +388,8 @@ impl Agent {
 
     pub async fn update_input_device_orientation(&self, id: u32, enable: bool) -> Result<()> {
         let orientation = if enable {
-            *self.state.orientation.read().await
+            let orientation = self.state.orientation.read().await;
+            *orientation
         } else {
             Default::default()
         };
@@ -398,7 +405,10 @@ impl Agent {
     }
 
     async fn detect_tablet_mode(&self, enable: bool) -> Result<()> {
-        let enabled = { self.state.tablet_mode_task.read().await.is_some() };
+        let enabled = {
+            let task = self.state.tablet_mode_task.read().await;
+            task.is_some()
+        };
 
         if enable == enabled {
             return Ok(());
@@ -432,7 +442,10 @@ impl Agent {
     }
 
     async fn apply_orientation(&self, orientation: Option<Orientation>) -> Result<()> {
-        let had_orientation = *self.state.orientation.read().await;
+        let had_orientation = {
+            let orientation = self.state.orientation.read().await;
+            *orientation
+        };
 
         let orientation = if let Some(orientation) = orientation {
             if had_orientation == orientation {
@@ -486,7 +499,10 @@ impl Agent {
     }
 
     async fn detect_orientation(&self, enable: bool) -> Result<()> {
-        let enabled = { self.state.orientation_task.read().await.is_some() };
+        let enabled = {
+            let task = self.state.orientation_task.read().await;
+            task.is_some()
+        };
 
         if enable == enabled {
             return Ok(());
@@ -538,7 +554,10 @@ impl Agent {
     }
 
     async fn monitor_service(&self, enable: bool) -> Result<()> {
-        let enabled = { self.state.service_task.read().await.is_some() };
+        let enabled = {
+            let task = self.state.service_task.read().await;
+            task.is_some()
+        };
 
         if enable == enabled {
             return Ok(());
