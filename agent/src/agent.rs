@@ -360,8 +360,11 @@ impl Agent {
         // On/off devices
         if let Some(xclient) = &self.state.xclient {
             // in tablet mode
-            for (id, action) in devices_to_switch {
-                xclient.switch_input_device(id, action).await?;
+            for (id, on) in devices_to_switch {
+                tracing::info!("Turn {} input device {id}", if on { "on" } else { "off" });
+                if let Err(error) = xclient.set_input_device_state(id, on).await {
+                    tracing::error!("Error while switching input device {id}: {error}");
+                }
             }
         }
 
@@ -373,14 +376,17 @@ impl Agent {
         Ok(())
     }
 
-    pub async fn update_input_device_state(&self, id: u32, enable: bool, is_tablet_mode: bool) -> Result<()> {
+    pub async fn update_input_device_state(&self, id: u32, on: bool, is_tablet_mode: bool) -> Result<()> {
         let tablet_mode = {
             let mode = self.state.tablet_mode.read().await;
             *mode
         };
         if is_tablet_mode == tablet_mode {
             if let Some(xclient) = &self.state.xclient {
-                xclient.switch_input_device(id, enable).await?;
+                tracing::info!("Turn {} input device {id}", if on { "on" } else { "off" });
+                if let Err(error) = xclient.set_input_device_state(id, on).await {
+                    tracing::error!("Error while switching input device {id}: {error}");
+                }
             }
         }
         Ok(())
@@ -394,7 +400,10 @@ impl Agent {
             Default::default()
         };
         if let Some(xclient) = &self.state.xclient {
-            xclient.set_input_device_orientation(id, orientation).await?;
+            tracing::info!("Rotate input device {id} to {orientation}");
+            if let Err(error) = xclient.set_input_device_orientation(id, orientation).await {
+                tracing::error!("Error while rotating input device {id}: {error}");
+            }
         }
         Ok(())
     }
@@ -478,8 +487,9 @@ impl Agent {
             }
 
             for id in devices_to_rotate {
+                tracing::info!("Rotate input device {id} to {orientation}");
                 if let Err(error) = xclient.set_input_device_orientation(id, orientation).await {
-                    tracing::error!("Error while rotating input device: {error}");
+                    tracing::error!("Error while rotating input device {id}: {error}");
                 }
             }
         }

@@ -61,6 +61,8 @@ pub struct XClient {
     device_type_map: RwLock<HashMap<u32, String>>,
     device_enabled_prop: Atom,
     coord_trans_mat_prop: Atom,
+    enable_disable_val: [ChangeDevicePropertyAux; 2],
+    coord_trans_mat_val: [ChangeDevicePropertyAux; 4],
 }
 
 impl XClient {
@@ -108,6 +110,18 @@ impl XClient {
         let device_enabled_prop = Self::atom(&conn, "Device Enabled").await?;
         let coord_trans_mat_prop = Self::atom(&conn, "Coordinate Transformation Matrix").await?;
 
+        let enable_disable_val = [
+            state_to_propval(true),
+            state_to_propval(false),
+        ];
+
+        let coord_trans_mat_val = [
+            orientation_to_propval(Orientation::TopUp),
+            orientation_to_propval(Orientation::LeftUp),
+            orientation_to_propval(Orientation::RightUp),
+            orientation_to_propval(Orientation::BottomUp),
+        ];
+
         Ok(Self {
             task,
             conn,
@@ -115,6 +129,8 @@ impl XClient {
             device_type_map,
             device_enabled_prop,
             coord_trans_mat_prop,
+            enable_disable_val,
+            coord_trans_mat_val,
         })
     }
 
@@ -165,7 +181,7 @@ impl XClient {
     }
 
     /*
-    pub async fn input_device_status(&self, device: &DeviceId) -> Result<bool> {
+    pub async fn input_device_state(&self, device: &DeviceId) -> Result<bool> {
         let reply = self
             .conn
             .xinput_get_device_property(self.device_enabled_prop, ANY_PROPERTY_TYPE, 0, 1, device.id as _, false)
@@ -181,44 +197,46 @@ impl XClient {
     }
     */
 
-    pub async fn switch_input_device(&self, device: u32, enable: bool) -> Result<()> {
-        let reply = self
-            .conn
-            .xinput_get_device_property(
-                self.device_enabled_prop,
-                ANY_PROPERTY_TYPE,
-                0,
-                1,
-                device as _,
-                false,
-            )
-            .await?
-            .reply()
-            .await?;
+    pub async fn set_input_device_state(&self, device: u32, enable: bool) -> Result<()> {
+        for _ in 0..4 {
+            let reply = self
+                .conn
+                .xinput_get_device_property(
+                    self.device_enabled_prop,
+                    ANY_PROPERTY_TYPE,
+                    0,
+                    1,
+                    device as _,
+                    false,
+                )
+                .await?
+                .reply()
+                .await?;
 
-        let type_ = reply.type_;
-        let enabled = reply
-            .items
-            .as_data8()
-            .map(|data| if data.is_empty() { false } else { data[0] == 1 })
-            .unwrap_or_default();
+            let type_ = reply.type_;
+            let enabled = reply
+                .items
+                .as_data8()
+                .and_then(|data| data.get(0).map(|val| *val != 0))
+                .unwrap_or_default();
 
-        if enable == enabled {
-            return Ok(());
+            if enable == enabled {
+                break;
+            }
+
+            let value = &self.enable_disable_val[if enable { 0 } else { 1 }];
+
+            self.conn
+                .xinput_change_device_property(
+                    self.device_enabled_prop,
+                    type_,
+                    device as _,
+                    PropMode::REPLACE,
+                    1,
+                    value,
+                )
+                .await?;
         }
-
-        let value = ChangeDevicePropertyAux::Data8(vec![if enable { 1 } else { 0 }]);
-
-        self.conn
-            .xinput_change_device_property(
-                self.device_enabled_prop,
-                type_,
-                device as _,
-                PropMode::REPLACE,
-                1,
-                &value,
-            )
-            .await?;
 
         Ok(())
     }
@@ -228,55 +246,53 @@ impl XClient {
         device: u32,
         orientation: Orientation,
     ) -> Result<()> {
-        let reply = self
-            .conn
-            .xinput_get_device_property(
-                self.coord_trans_mat_prop,
-                ANY_PROPERTY_TYPE,
-                0,
-                core::mem::size_of::<f32>() as u32 * 9,
-                device as _,
-                false,
-            )
-            .await?
-            .reply()
-            .await?;
+        for _ in 0..4 {
+            let reply = self
+                .conn
+                .xinput_get_device_property(
+                    self.coord_trans_mat_prop,
+                    ANY_PROPERTY_TYPE,
+                    0,
+                    core::mem::size_of::<f32>() as u32 * 9,
+                    device as _,
+                    false,
+                )
+                .await?
+                .reply()
+                .await?;
 
-        let type_ = reply.type_;
-        let had_matrix = reply
-            .items
-            .as_data32()
-            .and_then(|data| {
-                let mat: &[u32; 9] = data.as_slice().try_into().ok()?;
-                let mat: &[f32; 9] = unsafe { &*(mat as *const _ as *const _) };
-                Some(mat)
-            })
-            .ok_or_else(|| XError::NotFound("coord transform matrix"))?;
+            let type_ = reply.type_;
 
-        let matrix = orientation_to_matrix(orientation);
+            let value = &self.coord_trans_mat_val[orientation as usize];
 
-        if had_matrix == matrix {
-            return Ok(());
+            let had_value = reply
+                .items
+                .as_data32()
+                .ok_or_else(|| XError::NotFound("coord transform matrix"))?;
+
+            if had_value == value.as_data32().unwrap() {
+                break;
+            }
+
+            self.conn
+                .xinput_change_device_property(
+                    self.coord_trans_mat_prop,
+                    type_,
+                    device as _,
+                    PropMode::REPLACE,
+                    9,
+                    value,
+                )
+                .await?;
         }
-
-        let value = ChangeDevicePropertyAux::Data32({
-            let mat: &[u32; 9] = unsafe { &*(matrix as *const _ as *const _) };
-            (&mat[..]).into()
-        });
-
-        self.conn
-            .xinput_change_device_property(
-                self.coord_trans_mat_prop,
-                type_,
-                device as _,
-                PropMode::REPLACE,
-                9,
-                &value,
-            )
-            .await?;
 
         Ok(())
     }
+}
+
+fn state_to_propval(state: bool) -> ChangeDevicePropertyAux {
+    let val = if state { 1 } else { 0 };
+    ChangeDevicePropertyAux::Data8(vec![val])
 }
 
 fn orientation_to_matrix(orientation: Orientation) -> &'static [f32; 9] {
@@ -302,6 +318,12 @@ fn orientation_to_matrix(orientation: Orientation) -> &'static [f32; 9] {
             0.0, 0.0, 1.0, //
         ],
     }
+}
+
+fn orientation_to_propval(orientation: Orientation) -> ChangeDevicePropertyAux {
+    let mat = orientation_to_matrix(orientation);
+    let mat: &[u32; 9] = unsafe { &*(mat as *const _ as *const _) };
+    ChangeDevicePropertyAux::Data32(mat.as_slice().into())
 }
 
 impl XClient {
