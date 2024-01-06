@@ -73,7 +73,7 @@ pub trait InputDevice {
 
     /// Input device type
     #[dbus_proxy(property)]
-    fn device_type(&self) -> zbus::fdo::Result<InputDeviceType>;
+    fn device_type(&self) -> zbus::fdo::Result<String>;
 
     /// Whether to enable device in tablet mode
     #[dbus_proxy(property)]

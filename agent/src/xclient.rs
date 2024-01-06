@@ -1,5 +1,5 @@
-use crate::{InputDeviceInfo, InputDeviceType, Orientation};
-use smol::{spawn, Task};
+use crate::{InputDeviceInfo, Orientation};
+use smol::{spawn, Task, lock::RwLock};
 use std::collections::HashMap;
 use x11rb::{
     connection::Connection,
@@ -58,7 +58,7 @@ pub struct XClient {
     task: Task<()>,
     conn: RustConnection,
     screen: Screen,
-    device_type_map: HashMap<u32, InputDeviceType>,
+    device_type_map: RwLock<HashMap<u32, String>>,
     device_enabled_prop: Atom,
     coord_trans_mat_prop: Atom,
 }
@@ -102,10 +102,8 @@ impl XClient {
         tracing::debug!("Screen: {}", screen.root);
 
         let mut device_type_map = HashMap::new();
-        for type_ in InputDeviceType::ALL {
-            let atom = Self::atom(&conn, type_.xi_name()).await?;
-            device_type_map.insert(atom, type_);
-        }
+        device_type_map.insert(0, "VIRTUAL".to_string());
+        let device_type_map = RwLock::new(device_type_map);
 
         let device_enabled_prop = Self::atom(&conn, "Device Enabled").await?;
         let coord_trans_mat_prop = Self::atom(&conn, "Coordinate Transformation Matrix").await?;
@@ -129,30 +127,37 @@ impl XClient {
             .atom)
     }
 
-    /*
     async fn atom_name(&self, atom: u32) -> Result<String> {
         Ok(String::from_utf8(
             self.conn.get_atom_name(atom).await?.reply().await?.name,
         )?)
     }
-    */
+
+    async fn get_input_device_type(&self, type_: u32) -> Result<String> {
+        Ok(if let Some(name) = {
+            let map = self.device_type_map.read().await;
+            map.get(&type_).cloned()
+        } {
+            name
+        } else {
+            let name = self.atom_name(type_).await?;
+            self.device_type_map.write().await.insert(type_, name.clone());
+            name
+        })
+    }
 
     pub async fn input_devices(&self) -> Result<Vec<InputDeviceInfo>> {
         let res = self.conn.xinput_list_input_devices().await?;
         let reply = res.reply().await?;
 
-        let devices = reply
-            .devices
-            .into_iter()
-            .zip(reply.names.into_iter())
-            .filter_map(|(info, name)| {
-                let id = info.device_id as _;
-                let name = String::from_utf8(name.name).ok()?;
-                let type_ = *self.device_type_map.get(&info.device_type)?;
-                Some(InputDeviceInfo { id, type_, name })
-            })
-            //.filter(|device| !device.name.contains("Virtual"))
-            .collect();
+        let mut devices = Vec::new();
+
+        for (info, name) in reply.devices.into_iter().zip(reply.names.into_iter()) {
+            let id = info.device_id as _;
+            let name = String::from_utf8(name.name)?;
+            let type_ = self.get_input_device_type(info.device_type).await?;
+            devices.push(InputDeviceInfo { id, type_, name })
+        }
 
         tracing::debug!("{devices:?}");
 

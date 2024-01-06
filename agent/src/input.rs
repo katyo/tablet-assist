@@ -1,4 +1,4 @@
-use crate::{InputDeviceInfo, InputDeviceType, Agent, Result};
+use crate::{InputDeviceInfo, Agent, Result};
 use zbus::{dbus_interface, Connection, zvariant::ObjectPath};
 use std::sync::Arc;
 
@@ -50,8 +50,8 @@ impl InputDevice {
 
     /// Input device type
     #[dbus_interface(property)]
-    fn device_type(&self) -> InputDeviceType {
-        self.state.info.type_
+    fn device_type(&self) -> &str {
+        &self.state.info.type_
     }
 
     /// Whether to enable device in tablet mode
