@@ -54,7 +54,7 @@ async fn agent(actions: Receiver<Action>, updates: Sender<Update>) -> Result<()>
     let connection = Connection::session().await?;
 
     let agent = AgentProxy::builder(&connection)
-        .cache_properties(zbus::CacheProperties::No)
+        .cache_properties(zbus::CacheProperties::Yes)
         .build()
         .await?;
 
@@ -69,7 +69,6 @@ async fn agent(actions: Receiver<Action>, updates: Sender<Update>) -> Result<()>
             agent.tablet_mode_detection().await?,
         ))
         .await?;
-
     updates
         .send(Update::AutoOrientation(agent.auto_orientation().await?))
         .await?;
@@ -82,71 +81,23 @@ async fn agent(actions: Receiver<Action>, updates: Sender<Update>) -> Result<()>
         ))
         .await?;
 
-    async fn update_auto_tablet_mode(updates: Sender<Update>, agent: AgentProxy<'_>) -> Result<()> {
-        let mut changes = agent.receive_auto_tablet_mode_changed().await;
-        while changes.next().await.is_some() {
+    async fn update_controls(updates: Sender<Update>, agent: AgentProxy<'_>) -> Result<()> {
+        let changes = agent.receive_auto_tablet_mode_changed().await
+            .then(|change| async move { change.get().await.map(Update::AutoTabletMode) })
+            .race(agent.receive_tablet_mode_detection_changed().await
+                  .then(|change| async move { change.get().await.map(Update::AutoTabletMode) }))
+            .race(agent.receive_tablet_mode_changed().await
+                .then(|change| async move { change.get().await.map(Update::TabletMode) }))
+            .race(agent.receive_auto_orientation_changed().await
+                  .then(|change| async move { change.get().await.map(Update::AutoOrientation) }))
+            .race(agent.receive_orientation_detection_changed().await
+                  .then(|change| async move { change.get().await.map(Update::OrientationDetection) }))
+            .race(agent.receive_orientation_changed().await
+                  .then(|change| async move { change.get().await.map(Update::Orientation) }));
+        smol::pin!(changes);
+        while let Some(change) = changes.next().await {
             updates
-                .send(Update::AutoTabletMode(agent.auto_tablet_mode().await?))
-                .await?;
-        }
-        Ok(())
-    }
-
-    async fn update_tablet_mode_detection(
-        updates: Sender<Update>,
-        agent: AgentProxy<'_>,
-    ) -> Result<()> {
-        let mut changes = agent.receive_tablet_mode_detection_changed().await;
-        while changes.next().await.is_some() {
-            updates
-                .send(Update::TabletModeDetection(
-                    agent.tablet_mode_detection().await?,
-                ))
-                .await?;
-        }
-        Ok(())
-    }
-
-    async fn update_tablet_mode(updates: Sender<Update>, agent: AgentProxy<'_>) -> Result<()> {
-        let mut changes = agent.receive_tablet_mode_changed().await;
-        while changes.next().await.is_some() {
-            updates
-                .send(Update::TabletMode(agent.tablet_mode().await?))
-                .await?;
-        }
-        Ok(())
-    }
-
-    async fn update_auto_orientation(updates: Sender<Update>, agent: AgentProxy<'_>) -> Result<()> {
-        let mut changes = agent.receive_auto_orientation_changed().await;
-        while changes.next().await.is_some() {
-            updates
-                .send(Update::AutoOrientation(agent.auto_orientation().await?))
-                .await?;
-        }
-        Ok(())
-    }
-
-    async fn update_orientation_detection(
-        updates: Sender<Update>,
-        agent: AgentProxy<'_>,
-    ) -> Result<()> {
-        let mut changes = agent.receive_orientation_detection_changed().await;
-        while changes.next().await.is_some() {
-            updates
-                .send(Update::OrientationDetection(
-                    agent.orientation_detection().await?,
-                ))
-                .await?;
-        }
-        Ok(())
-    }
-
-    async fn update_orientation(updates: Sender<Update>, agent: AgentProxy<'_>) -> Result<()> {
-        let mut changes = agent.receive_orientation_changed().await;
-        while changes.next().await.is_some() {
-            updates
-                .send(Update::Orientation(agent.orientation().await?))
+                .send(change?)
                 .await?;
         }
         Ok(())
@@ -164,14 +115,11 @@ async fn agent(actions: Receiver<Action>, updates: Sender<Update>) -> Result<()>
         Ok(())
     }
 
-    update_auto_tablet_mode(updates.clone(), agent.clone())
-        .race(update_tablet_mode_detection(updates.clone(), agent.clone()))
-        .race(update_tablet_mode(updates.clone(), agent.clone()))
-        .race(update_auto_orientation(updates.clone(), agent.clone()))
-        .race(update_orientation_detection(updates.clone(), agent.clone()))
-        .race(update_orientation(updates.clone(), agent.clone()))
+    update_controls(updates.clone(), agent.clone())
         .race(process_actions(actions, agent.clone()))
         .await?;
+
+    eprintln!("Unexpected termination");
 
     Ok(())
 }
