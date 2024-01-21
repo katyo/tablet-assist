@@ -2,6 +2,14 @@
 resolver = "2"
 members = ["service", "agent", "ui"]
 
+[workspace.package]
+version = "0.1.0"
+authors = ["K. <kayo@illumium.org>"]
+license = "MIT"
+edition = "2021"
+homepage = "https://github.com/katyo/tablet-assist"
+repository = "https://github.com/katyo/tablet-assist"
+
 [workspace.dependencies]
 thiserror = "1"
 tracing = "0.1"

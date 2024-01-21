@@ -1,13 +1,13 @@
 [package]
 name = "tablet-assist-ui"
-version = "0.1.0"
 description = "Tablet-mode assistance Gtk-based indicator UI."
-authors = ["K. <kayo@illumium.org>"]
-homepage = "https://github.com/katyo/tablet-assist"
-repository = "https://github.com/katyo/tablet-assist"
-license = "MIT"
 keywords = ["tablet", "laptop", "convertible", "orientation", "usability"]
-edition = "2021"
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+edition.workspace = true
 
 [dependencies]
 thiserror.workspace = true
