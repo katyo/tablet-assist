@@ -1,5 +1,5 @@
 use crate::{InputDeviceInfo, Orientation};
-use smol::{spawn, Task, lock::RwLock};
+use smol::{lock::RwLock, spawn, Task};
 use std::collections::HashMap;
 use x11rb::{
     connection::Connection,
@@ -110,10 +110,7 @@ impl XClient {
         let device_enabled_prop = Self::atom(&conn, "Device Enabled").await?;
         let coord_trans_mat_prop = Self::atom(&conn, "Coordinate Transformation Matrix").await?;
 
-        let enable_disable_val = [
-            state_to_propval(true),
-            state_to_propval(false),
-        ];
+        let enable_disable_val = [state_to_propval(true), state_to_propval(false)];
 
         let coord_trans_mat_val = [
             orientation_to_propval(Orientation::TopUp),
@@ -150,16 +147,21 @@ impl XClient {
     }
 
     async fn get_input_device_type(&self, type_: u32) -> Result<String> {
-        Ok(if let Some(name) = {
-            let map = self.device_type_map.read().await;
-            map.get(&type_).cloned()
-        } {
-            name
-        } else {
-            let name = self.atom_name(type_).await?;
-            self.device_type_map.write().await.insert(type_, name.clone());
-            name
-        })
+        Ok(
+            if let Some(name) = {
+                let map = self.device_type_map.read().await;
+                map.get(&type_).cloned()
+            } {
+                name
+            } else {
+                let name = self.atom_name(type_).await?;
+                self.device_type_map
+                    .write()
+                    .await
+                    .insert(type_, name.clone());
+                name
+            },
+        )
     }
 
     pub async fn input_devices(&self) -> Result<Vec<InputDeviceInfo>> {

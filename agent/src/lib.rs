@@ -60,7 +60,7 @@ pub trait Agent {
 #[dbus_proxy(
     interface = "tablet.assist.InputDevice1",
     default_service = "tablet.assist.InputDevice",
-    default_path = "/tablet/assist/input_device",
+    default_path = "/tablet/assist/input_device"
 )]
 pub trait InputDevice {
     /// Input device id

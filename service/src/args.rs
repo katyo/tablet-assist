@@ -14,20 +14,15 @@ pub struct Args {
     #[argp(switch, short = 'd')]
     pub dbus: bool,
 
-    /// Log/trace filter.
+    /// Logging filter.
     #[cfg(feature = "tracing-subscriber")]
     #[argp(
         option,
-        short = 't',
+        short = 'l',
         arg_name = "filter",
         from_str_fn(Args::parse_env_filter)
     )]
-    pub trace: Option<EnvFilter>,
-
-    /// Log to stdout.
-    #[cfg(feature = "stderr")]
-    #[argp(switch, short = 'l')]
-    pub log: bool,
+    pub log: Option<EnvFilter>,
 
     /// Log to journald.
     #[cfg(feature = "journal")]

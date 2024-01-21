@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 pub use tablet_assist_service::Orientation;
-use zbus::zvariant::{Type, Value, OwnedValue};
+use zbus::zvariant::{OwnedValue, Type, Value};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Type, Value, OwnedValue)]
 pub struct InputDeviceInfo {
@@ -9,7 +9,6 @@ pub struct InputDeviceInfo {
     pub type_: String,
     pub name: String,
 }
-
 
 impl core::fmt::Display for InputDeviceInfo {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {

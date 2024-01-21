@@ -1,6 +1,6 @@
 use crate::{
-    Config, ConfigHolder, InputDeviceConfig, InputDeviceInfo, Orientation, Result, ServiceProxy,
-    XClient, InputDevice,
+    Config, ConfigHolder, InputDevice, InputDeviceConfig, InputDeviceInfo, Orientation, Result,
+    ServiceProxy, XClient,
 };
 use smol::{lock::RwLock, spawn, stream::StreamExt, Task};
 use std::sync::Arc;
@@ -294,20 +294,27 @@ impl Agent {
         let mut input_devices = Vec::new();
 
         if let Some(xclient) = &self.state.xclient {
-            input_devices.extend(xclient.input_devices().await?
-                                 .into_iter().map(|info| InputDevice::new(&self, info)));
+            input_devices.extend(
+                xclient
+                    .input_devices()
+                    .await?
+                    .into_iter()
+                    .map(|info| InputDevice::new(&self, info)),
+            );
         }
 
         let iface = self.state.interface.read().await;
         let conn = iface.as_ref().unwrap().signal_context().connection();
 
-        { // remove devices from bus
+        {
+            // remove devices from bus
             for device in self.state.input_devices.read().await.iter() {
                 device.remove(conn).await?;
             }
         }
 
-        { // add devices to bus
+        {
+            // add devices to bus
             for device in &input_devices {
                 device.add(conn).await?;
             }
@@ -376,7 +383,12 @@ impl Agent {
         Ok(())
     }
 
-    pub async fn update_input_device_state(&self, id: u32, on: bool, is_tablet_mode: bool) -> Result<()> {
+    pub async fn update_input_device_state(
+        &self,
+        id: u32,
+        on: bool,
+        is_tablet_mode: bool,
+    ) -> Result<()> {
         let tablet_mode = {
             let mode = self.state.tablet_mode.read().await;
             *mode

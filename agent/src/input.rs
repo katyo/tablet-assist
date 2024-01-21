@@ -1,6 +1,6 @@
-use crate::{InputDeviceInfo, Agent, Result};
-use zbus::{dbus_interface, Connection, zvariant::ObjectPath};
+use crate::{Agent, InputDeviceInfo, Result};
 use std::sync::Arc;
+use zbus::{dbus_interface, zvariant::ObjectPath, Connection};
 
 struct State {
     info: InputDeviceInfo,
@@ -15,7 +15,9 @@ pub struct InputDevice {
 impl InputDevice {
     pub fn new(agent: &Agent, info: InputDeviceInfo) -> Self {
         let agent = agent.clone();
-        Self { state: Arc::new(State { agent, info }) }
+        Self {
+            state: Arc::new(State { agent, info }),
+        }
     }
 
     fn path(&self) -> zbus::Result<ObjectPath<'static>> {
@@ -57,20 +59,30 @@ impl InputDevice {
     /// Whether to enable device in tablet mode
     #[dbus_interface(property)]
     async fn enable_tablet(&self) -> bool {
-        self.state.agent.with_config(|config| config.get_device(&self.state.info).tablet).await
+        self.state
+            .agent
+            .with_config(|config| config.get_device(&self.state.info).tablet)
+            .await
     }
 
     #[dbus_interface(property)]
     async fn set_enable_tablet(&self, enable: bool) -> zbus::Result<()> {
-        let enabled = self.state.agent.with_config_mut(|config| {
-            config.with_device(&self.state.info, |config| {
-                let had = config.tablet;
-                config.tablet = enable;
-                had
+        let enabled = self
+            .state
+            .agent
+            .with_config_mut(|config| {
+                config.with_device(&self.state.info, |config| {
+                    let had = config.tablet;
+                    config.tablet = enable;
+                    had
+                })
             })
-        }).await;
+            .await;
         if enable != enabled {
-            self.state.agent.update_input_device_state(self.state.info.id, enable, true).await?;
+            self.state
+                .agent
+                .update_input_device_state(self.state.info.id, enable, true)
+                .await?;
         }
         Ok(())
     }
@@ -78,20 +90,30 @@ impl InputDevice {
     /// Whether to enable device in laptop mode
     #[dbus_interface(property)]
     async fn enable_laptop(&self) -> bool {
-        self.state.agent.with_config(|config| config.get_device(&self.state.info).laptop).await
+        self.state
+            .agent
+            .with_config(|config| config.get_device(&self.state.info).laptop)
+            .await
     }
 
     #[dbus_interface(property)]
     async fn set_enable_laptop(&self, enable: bool) -> zbus::Result<()> {
-        let enabled = self.state.agent.with_config_mut(|config| {
-            config.with_device(&self.state.info, |config| {
-                let had = config.laptop;
-                config.laptop = enable;
-                had
+        let enabled = self
+            .state
+            .agent
+            .with_config_mut(|config| {
+                config.with_device(&self.state.info, |config| {
+                    let had = config.laptop;
+                    config.laptop = enable;
+                    had
+                })
             })
-        }).await;
+            .await;
         if enable != enabled {
-            self.state.agent.update_input_device_state(self.state.info.id, enable, false).await?;
+            self.state
+                .agent
+                .update_input_device_state(self.state.info.id, enable, false)
+                .await?;
         }
         Ok(())
     }
@@ -99,20 +121,30 @@ impl InputDevice {
     /// Whether to change device orientation with screen
     #[dbus_interface(property)]
     async fn enable_rotation(&self) -> bool {
-        self.state.agent.with_config(|config| config.get_device(&self.state.info).rotate).await
+        self.state
+            .agent
+            .with_config(|config| config.get_device(&self.state.info).rotate)
+            .await
     }
 
     #[dbus_interface(property)]
     async fn set_enable_rotation(&self, enable: bool) -> zbus::Result<()> {
-        let enabled = self.state.agent.with_config_mut(|config| {
-            config.with_device(&self.state.info, |config| {
-                let had = config.rotate;
-                config.rotate = enable;
-                had
+        let enabled = self
+            .state
+            .agent
+            .with_config_mut(|config| {
+                config.with_device(&self.state.info, |config| {
+                    let had = config.rotate;
+                    config.rotate = enable;
+                    had
+                })
             })
-        }).await;
+            .await;
         if enable != enabled {
-            self.state.agent.update_input_device_orientation(self.state.info.id, enable).await?;
+            self.state
+                .agent
+                .update_input_device_orientation(self.state.info.id, enable)
+                .await?;
         }
         Ok(())
     }

@@ -36,17 +36,21 @@ async fn main() -> Result<()> {
     }
 
     #[cfg(feature = "tracing-subscriber")]
-    if let Some(trace) = args.trace {
+    if let Some(log) = args.log {
         use tracing_subscriber::prelude::*;
 
-        let registry = tracing_subscriber::registry().with(trace);
+        let registry = tracing_subscriber::registry().with(log);
 
-        #[cfg(feature = "stderr")]
-        let registry = registry.with(if args.log {
+        #[cfg(all(feature = "stderr", feature = "journal"))]
+        let registry = registry.with(if !args.journal {
             Some(tracing_subscriber::fmt::Layer::default().with_writer(std::io::stderr))
         } else {
             None
         });
+
+        #[cfg(all(feature = "stderr", not(feature = "journal")))]
+        let registry =
+            registry.with(tracing_subscriber::fmt::Layer::default().with_writer(std::io::stderr));
 
         #[cfg(feature = "journal")]
         let registry = registry.with(if args.journal {

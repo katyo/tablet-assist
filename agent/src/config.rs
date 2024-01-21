@@ -32,7 +32,11 @@ impl Config {
         }
     }
 
-    pub fn with_device<T>(&mut self, id: &InputDeviceInfo, func: impl FnOnce(&mut InputDeviceConfig) -> T) -> T {
+    pub fn with_device<T>(
+        &mut self,
+        id: &InputDeviceInfo,
+        func: impl FnOnce(&mut InputDeviceConfig) -> T,
+    ) -> T {
         let mut config = *self.get_device(id);
         let res = func(&mut config);
         self.set_device(id, config);
