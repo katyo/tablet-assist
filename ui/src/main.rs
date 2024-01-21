@@ -1,13 +1,17 @@
 use appindicator3::{prelude::*, Indicator, IndicatorCategory, IndicatorStatus};
 use gtk::prelude::*;
+use rust_i18n::{i18n, t};
 use smol::{
     channel::{Receiver, Sender},
     future::FutureExt,
     stream::StreamExt,
 };
-use rust_i18n::{t, i18n};
 use tablet_assist_agent::{AgentProxy, Orientation};
 use zbus::Connection;
+
+mod args;
+
+use args::Args;
 
 i18n!("i18n", fallback = "en");
 
@@ -85,23 +89,45 @@ async fn agent(actions: Receiver<Action>, updates: Sender<Update>) -> Result<()>
         .await?;
 
     async fn update_controls(updates: Sender<Update>, agent: AgentProxy<'_>) -> Result<()> {
-        let changes = agent.receive_auto_tablet_mode_changed().await
-            .then(|change| async move { change.get().await.map(Update::AutoTabletMode) })
-            .race(agent.receive_tablet_mode_detection_changed().await
-                  .then(|change| async move { change.get().await.map(Update::AutoTabletMode) }))
-            .race(agent.receive_tablet_mode_changed().await
-                .then(|change| async move { change.get().await.map(Update::TabletMode) }))
-            .race(agent.receive_auto_orientation_changed().await
-                  .then(|change| async move { change.get().await.map(Update::AutoOrientation) }))
-            .race(agent.receive_orientation_detection_changed().await
-                  .then(|change| async move { change.get().await.map(Update::OrientationDetection) }))
-            .race(agent.receive_orientation_changed().await
-                  .then(|change| async move { change.get().await.map(Update::Orientation) }));
+        let changes =
+            agent
+                .receive_auto_tablet_mode_changed()
+                .await
+                .then(|change| async move { change.get().await.map(Update::AutoTabletMode) })
+                .race(
+                    agent
+                        .receive_tablet_mode_detection_changed()
+                        .await
+                        .then(
+                            |change| async move { change.get().await.map(Update::AutoTabletMode) },
+                        ),
+                )
+                .race(
+                    agent
+                        .receive_tablet_mode_changed()
+                        .await
+                        .then(|change| async move { change.get().await.map(Update::TabletMode) }),
+                )
+                .race(
+                    agent
+                        .receive_auto_orientation_changed()
+                        .await
+                        .then(
+                            |change| async move { change.get().await.map(Update::AutoOrientation) },
+                        ),
+                )
+                .race(agent.receive_orientation_detection_changed().await.then(
+                    |change| async move { change.get().await.map(Update::OrientationDetection) },
+                ))
+                .race(
+                    agent
+                        .receive_orientation_changed()
+                        .await
+                        .then(|change| async move { change.get().await.map(Update::Orientation) }),
+                );
         smol::pin!(changes);
         while let Some(change) = changes.next().await {
-            updates
-                .send(change?)
-                .await?;
+            updates.send(change?).await?;
         }
         Ok(())
     }
@@ -109,10 +135,26 @@ async fn agent(actions: Receiver<Action>, updates: Sender<Update>) -> Result<()>
     async fn process_actions(actions: Receiver<Action>, agent: AgentProxy<'_>) -> Result<()> {
         while let Ok(action) = actions.recv().await {
             match action {
-                Action::AutoTabletMode(is) => agent.set_auto_tablet_mode(is).await?,
-                Action::TabletMode(mode) => agent.set_tablet_mode(mode).await?,
-                Action::AutoOrientation(is) => agent.set_auto_orientation(is).await?,
-                Action::Orientation(orientation) => agent.set_orientation(orientation).await?,
+                Action::AutoTabletMode(is) => {
+                    if agent.auto_tablet_mode().await? != is {
+                        agent.set_auto_tablet_mode(is).await?;
+                    }
+                }
+                Action::TabletMode(mode) => {
+                    if agent.tablet_mode().await? != mode {
+                        agent.set_tablet_mode(mode).await?;
+                    }
+                }
+                Action::AutoOrientation(is) => {
+                    if agent.auto_orientation().await? != is {
+                        agent.set_auto_orientation(is).await?;
+                    }
+                }
+                Action::Orientation(orientation) => {
+                    if agent.orientation().await? != orientation {
+                        agent.set_orientation(orientation).await?;
+                    }
+                }
             }
         }
         Ok(())
@@ -122,17 +164,44 @@ async fn agent(actions: Receiver<Action>, updates: Sender<Update>) -> Result<()>
         .race(process_actions(actions, agent.clone()))
         .await?;
 
-    eprintln!("Unexpected termination");
+    tracing::error!("Unexpected termination");
 
     Ok(())
 }
 
 fn main() {
-    let locale = sys_locale::get_locale().unwrap_or_else(|| "en-US".into()); //.split_once('-').unwrap().0;
+    let args = Args::new();
 
-    eprintln!("Determined locale: {locale}. Supported locales: {:?}", rust_i18n::available_locales!());
+    if args.version {
+        println!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+        if !env!("CARGO_PKG_DESCRIPTION").is_empty() {
+            println!("{}", env!("CARGO_PKG_DESCRIPTION"));
+        }
+        return;
+    }
 
-    rust_i18n::set_locale(&locale);
+    #[cfg(feature = "tracing-subscriber")]
+    if let Some(log) = args.log {
+        use tracing_subscriber::prelude::*;
+
+        let registry = tracing_subscriber::registry().with(log);
+
+        #[cfg(feature = "stderr")]
+        let registry =
+            registry.with(tracing_subscriber::fmt::Layer::default().with_writer(std::io::stderr));
+
+        registry.init();
+    }
+
+    tracing::info!("Start");
+
+    tracing::info!(
+        "Determined locale: {}. Supported locales: {:?}",
+        args.locale,
+        rust_i18n::available_locales!()
+    );
+
+    rust_i18n::set_locale(&args.locale);
 
     gtk::init().unwrap();
 
@@ -177,7 +246,8 @@ fn main() {
         }
     });
 
-    let right_up = gtk::RadioMenuItem::with_label_from_widget(&top_up, Some(&t!("toggle.right_up")));
+    let right_up =
+        gtk::RadioMenuItem::with_label_from_widget(&top_up, Some(&t!("toggle.right_up")));
     right_up.connect_toggled({
         let sender = action_sender.clone();
         move |right_up| {
@@ -187,7 +257,8 @@ fn main() {
         }
     });
 
-    let bottom_up = gtk::RadioMenuItem::with_label_from_widget(&top_up, Some(&t!("toggle.bottom_up")));
+    let bottom_up =
+        gtk::RadioMenuItem::with_label_from_widget(&top_up, Some(&t!("toggle.bottom_up")));
     bottom_up.connect_toggled({
         let sender = action_sender.clone();
         move |bottom_up| {

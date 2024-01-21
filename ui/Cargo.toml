@@ -11,6 +11,8 @@ edition = "2021"
 
 [dependencies]
 thiserror.workspace = true
+tracing.workspace = true
+argp.workspace = true
 zbus.workspace = true
 smol.workspace = true
 appindicator3.workspace = true
@@ -20,6 +22,12 @@ sys-locale.workspace = true
 rust-i18n.workspace = true
 tablet-assist-agent.workspace = true
 
+[dependencies.tracing-subscriber]
+workspace = true
+optional = true
+
 [features]
+default = ["stderr"]
+stderr = ["tracing-subscriber"]
 exit = []
 settings = []
