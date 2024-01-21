@@ -16,4 +16,10 @@ smol.workspace = true
 appindicator3.workspace = true
 gtk.workspace = true
 glib.workspace = true
+sys-locale.workspace = true
+rust-i18n.workspace = true
 tablet-assist-agent.workspace = true
+
+[features]
+exit = []
+settings = []

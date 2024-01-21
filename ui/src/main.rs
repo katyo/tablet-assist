@@ -5,8 +5,11 @@ use smol::{
     future::FutureExt,
     stream::StreamExt,
 };
+use rust_i18n::{t, i18n};
 use tablet_assist_agent::{AgentProxy, Orientation};
 use zbus::Connection;
+
+i18n!("i18n", fallback = "en");
 
 pub type Result<T> = core::result::Result<T, Error>;
 
@@ -125,12 +128,18 @@ async fn agent(actions: Receiver<Action>, updates: Sender<Update>) -> Result<()>
 }
 
 fn main() {
+    let locale = sys_locale::get_locale().unwrap_or_else(|| "en-US".into()); //.split_once('-').unwrap().0;
+
+    eprintln!("Determined locale: {locale}. Supported locales: {:?}", rust_i18n::available_locales!());
+
+    rust_i18n::set_locale(&locale);
+
     gtk::init().unwrap();
 
     let (action_sender, action_receiver) = smol::channel::bounded(1);
     let (update_sender, update_receiver) = smol::channel::bounded(10);
 
-    let tablet_mode = gtk::CheckMenuItem::with_label("Tablet mode");
+    let tablet_mode = gtk::CheckMenuItem::with_label(&t!("switch.tablet_mode"));
     tablet_mode.connect_toggled({
         let sender = action_sender.clone();
         move |tablet_mode| {
@@ -138,7 +147,7 @@ fn main() {
         }
     });
 
-    let auto_tablet_mode = gtk::CheckMenuItem::with_label("Auto tablet");
+    let auto_tablet_mode = gtk::CheckMenuItem::with_label(&t!("switch.auto_tablet"));
     auto_tablet_mode.connect_toggled({
         let sender = action_sender.clone();
         let tablet_mode = tablet_mode.clone();
@@ -147,9 +156,8 @@ fn main() {
             tablet_mode.set_sensitive(!auto_tablet_mode.is_active());
         }
     });
-    //auto_tablet_mode.set_active(true);
 
-    let top_up = gtk::RadioMenuItem::with_label("Top up");
+    let top_up = gtk::RadioMenuItem::with_label(&t!("toggle.top_up"));
     top_up.connect_toggled({
         let sender = action_sender.clone();
         move |top_up| {
@@ -159,7 +167,7 @@ fn main() {
         }
     });
 
-    let left_up = gtk::RadioMenuItem::with_label_from_widget(&top_up, Some("Left up"));
+    let left_up = gtk::RadioMenuItem::with_label_from_widget(&top_up, Some(&t!("toggle.left_up")));
     left_up.connect_toggled({
         let sender = action_sender.clone();
         move |left_up| {
@@ -169,7 +177,7 @@ fn main() {
         }
     });
 
-    let right_up = gtk::RadioMenuItem::with_label_from_widget(&top_up, Some("Right up"));
+    let right_up = gtk::RadioMenuItem::with_label_from_widget(&top_up, Some(&t!("toggle.right_up")));
     right_up.connect_toggled({
         let sender = action_sender.clone();
         move |right_up| {
@@ -179,7 +187,7 @@ fn main() {
         }
     });
 
-    let bottom_up = gtk::RadioMenuItem::with_label_from_widget(&top_up, Some("Bottom up"));
+    let bottom_up = gtk::RadioMenuItem::with_label_from_widget(&top_up, Some(&t!("toggle.bottom_up")));
     bottom_up.connect_toggled({
         let sender = action_sender.clone();
         move |bottom_up| {
@@ -189,7 +197,7 @@ fn main() {
         }
     });
 
-    let auto_orientation = gtk::CheckMenuItem::with_label("Auto rotate");
+    let auto_orientation = gtk::CheckMenuItem::with_label(&t!("switch.auto_rotate"));
     auto_orientation.connect_toggled({
         let sender = action_sender.clone();
         let orientation = top_up.clone();
@@ -200,9 +208,10 @@ fn main() {
             }
         }
     });
-    //auto_orientation.set_active(true);
 
-    let exit = gtk::MenuItem::with_label("Quit");
+    #[cfg(feature = "exit")]
+    let exit = gtk::MenuItem::with_label(&t!("label.exit"));
+    #[cfg(feature = "exit")]
     exit.connect_activate(|_| {
         let dialog = gtk::MessageDialog::new(
             None as Option<&gtk::Window>,
@@ -231,11 +240,13 @@ fn main() {
     menu.add(&right_up);
     menu.add(&bottom_up);
     menu.add(&gtk::SeparatorMenuItem::new());
+
+    #[cfg(feature = "exit")]
     menu.add(&exit);
 
     menu.show_all();
 
-    let _indicator = Indicator::builder("Tablet mode")
+    let _indicator = Indicator::builder("tablet-assist")
         .category(IndicatorCategory::ApplicationStatus)
         .menu(&menu)
         .icon("input-tablet", "icon")

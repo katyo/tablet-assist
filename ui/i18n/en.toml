@@ -1,0 +1,13 @@
+[switch]
+auto_rotate = "Auto rotate"
+auto_tablet = "Auto tablet"
+tablet_mode = "Tablet mode"
+
+[toggle]
+top_up = "Top up"
+bottom_up = "Bottom up"
+left_up = "Left up"
+right_up = "Right Up"
+
+[label]
+exit = "Quit"

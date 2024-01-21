@@ -1,0 +1,13 @@
+[switch]
+auto_rotate = "Авто поворот"
+auto_tablet = "Авто планшет"
+tablet_mode = "Режим планшета"
+
+[toggle]
+top_up = "Верх сверху"
+bottom_up = "Низ сверху"
+left_up = "Лево сверху"
+right_up = "Право сверху"
+
+[label]
+exit = "Выход"
