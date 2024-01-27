@@ -2,6 +2,7 @@
 name = "tablet-assist-ui"
 description = "Tablet-mode assistance Gtk-based indicator UI."
 keywords = ["tablet", "laptop", "convertible", "orientation", "usability"]
+readme = "../README.md"
 version.workspace = true
 authors.workspace = true
 license.workspace = true

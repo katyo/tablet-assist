@@ -2,6 +2,7 @@
 name = "tablet-assist-service"
 description = "Tablet-mode assistance DBus system service."
 keywords = ["tablet", "laptop", "convertible", "orientation", "usability"]
+readme = "../README.md"
 version.workspace = true
 authors.workspace = true
 license.workspace = true
