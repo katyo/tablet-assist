@@ -1,6 +1,6 @@
 use crate::{InputDeviceInfo, Orientation};
 use smol::{lock::RwLock, spawn, Task};
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::OnceLock};
 use x11rb::{
     connection::Connection,
     protocol::{
@@ -61,8 +61,6 @@ pub struct XClient {
     device_type_map: RwLock<HashMap<u32, String>>,
     device_enabled_prop: Atom,
     coord_trans_mat_prop: Atom,
-    enable_disable_val: [ChangeDevicePropertyAux; 2],
-    coord_trans_mat_val: [ChangeDevicePropertyAux; 4],
 }
 
 impl XClient {
@@ -110,15 +108,6 @@ impl XClient {
         let device_enabled_prop = Self::atom(&conn, "Device Enabled").await?;
         let coord_trans_mat_prop = Self::atom(&conn, "Coordinate Transformation Matrix").await?;
 
-        let enable_disable_val = [state_to_propval(true), state_to_propval(false)];
-
-        let coord_trans_mat_val = [
-            orientation_to_propval(Orientation::TopUp),
-            orientation_to_propval(Orientation::LeftUp),
-            orientation_to_propval(Orientation::RightUp),
-            orientation_to_propval(Orientation::BottomUp),
-        ];
-
         Ok(Self {
             task,
             conn,
@@ -126,8 +115,6 @@ impl XClient {
             device_type_map,
             device_enabled_prop,
             coord_trans_mat_prop,
-            enable_disable_val,
-            coord_trans_mat_val,
         })
     }
 
@@ -226,7 +213,7 @@ impl XClient {
                 break;
             }
 
-            let value = &self.enable_disable_val[if enable { 0 } else { 1 }];
+            let value = state_to_propval(enable);
 
             self.conn
                 .xinput_change_device_property(
@@ -265,14 +252,15 @@ impl XClient {
 
             let type_ = reply.type_;
 
-            let value = &self.coord_trans_mat_val[orientation as usize];
-
             let had_value = reply
                 .items
                 .as_data32()
                 .ok_or_else(|| XError::NotFound("coord transform matrix"))?;
 
+            let value = orientation_to_propval(orientation);
+
             if had_value == value.as_data32().unwrap() {
+                // value already same -> nothing to do
                 break;
             }
 
@@ -292,40 +280,57 @@ impl XClient {
     }
 }
 
-fn state_to_propval(state: bool) -> ChangeDevicePropertyAux {
-    let val = if state { 1 } else { 0 };
-    ChangeDevicePropertyAux::Data8(vec![val])
-}
-
-fn orientation_to_matrix(orientation: Orientation) -> &'static [f32; 9] {
-    match orientation {
-        Orientation::TopUp => &[
-            1.0, 0.0, 0.0, //
-            0.0, 1.0, 0.0, //
-            0.0, 0.0, 1.0, //
-        ],
-        Orientation::LeftUp => &[
-            0.0, -1.0, 1.0, //
-            1.0, 0.0, 0.0, //
-            0.0, 0.0, 1.0, //
-        ],
-        Orientation::RightUp => &[
-            0.0, 1.0, 0.0, //
-            -1.0, 0.0, 1.0, //
-            0.0, 0.0, 1.0, //
-        ],
-        Orientation::BottomUp => &[
-            -1.0, 0.0, 1.0, //
-            0.0, -1.0, 1.0, //
-            0.0, 0.0, 1.0, //
-        ],
+fn state_to_propval(state: bool) -> &'static ChangeDevicePropertyAux {
+    fn propval(state: bool) -> ChangeDevicePropertyAux {
+        let val = if state { 1 } else { 0 };
+        ChangeDevicePropertyAux::Data8(vec![val])
     }
+
+    static VAL: OnceLock<[ChangeDevicePropertyAux; 2]> = OnceLock::new();
+
+    &VAL.get_or_init(|| [propval(false), propval(true)])[if state { 1 } else { 0 }]
 }
 
-fn orientation_to_propval(orientation: Orientation) -> ChangeDevicePropertyAux {
-    let mat = orientation_to_matrix(orientation);
-    let mat: &[u32; 9] = unsafe { &*(mat as *const _ as *const _) };
-    ChangeDevicePropertyAux::Data32(mat.as_slice().into())
+fn orientation_to_propval(orientation: Orientation) -> &'static ChangeDevicePropertyAux {
+    fn propval(orientation: Orientation) -> ChangeDevicePropertyAux {
+        let mat = match orientation {
+            Orientation::TopUp => &[
+                1.0, 0.0, 0.0, //
+                0.0, 1.0, 0.0, //
+                0.0, 0.0, 1.0, //
+            ],
+            Orientation::LeftUp => &[
+                0.0, -1.0, 1.0, //
+                1.0, 0.0, 0.0, //
+                0.0, 0.0, 1.0, //
+            ],
+            Orientation::RightUp => &[
+                0.0, 1.0, 0.0, //
+                -1.0, 0.0, 1.0, //
+                0.0, 0.0, 1.0, //
+            ],
+            Orientation::BottomUp => &[
+                -1.0, 0.0, 1.0, //
+                0.0, -1.0, 1.0, //
+                0.0, 0.0, 1.0, //
+            ],
+        };
+
+        let mat: &[u32; 9] = unsafe { &*(mat as *const _ as *const _) };
+
+        ChangeDevicePropertyAux::Data32(mat.as_slice().into())
+    }
+
+    static VAL: OnceLock<[ChangeDevicePropertyAux; 4]> = OnceLock::new();
+
+    &VAL.get_or_init(|| {
+        [
+            propval(Orientation::TopUp),
+            propval(Orientation::LeftUp),
+            propval(Orientation::RightUp),
+            propval(Orientation::BottomUp),
+        ]
+    })[orientation as usize]
 }
 
 impl XClient {
