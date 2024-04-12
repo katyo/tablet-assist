@@ -52,6 +52,35 @@ Features:
 - [x] Tray indicator for quick controls
 - [ ] Input devices configuration dialog
 
+## Installation
+
+### Service
+
+```sh
+cargo build --release -p tablet-assist-service
+cp target/release/tablet-assist-service /usr/sbin
+cp data/tablet-assist.service /usr/lib/systemd/system
+cp data/tablet.assist.Service.conf /usr/share/dbus-1/system.d
+cp data/tablet.assist.Service.service /usr/share/dbus-1/system-services
+```
+
+### Agent
+
+```sh
+cargo build --release -p tablet-assist-agent
+cp target/release/tablet-assist-agent /usr/sbin
+cp data/tablet-assist-agent.service /usr/share/systemd/user
+cp data/tablet.assist.Agent.service /usr/share/dbus-1/services
+```
+
+### UI
+
+```sh
+cargo build --release -p tablet-assist-ui
+cp target/release/tablet-assist-ui /usr/bin
+cp data/tablet-assist.desktop /etc/xdg/autostart
+```
+
 ## Supported devices
 
 - [x] Lenovo ThinkPad X1

@@ -1,0 +1,7 @@
+[Unit]
+Description=Tablet-mode assistance DBus agent
+
+[Service]
+Type=dbus
+BusName=tablet.assist.Agent
+ExecStart=/usr/sbin/tablet-assist-agent

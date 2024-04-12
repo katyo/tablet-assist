@@ -1,5 +1,5 @@
 [D-BUS Service]
 Name=tablet.assist.Service
-Exec=@libexecdir@/tablet-assist-service --dbus
+Exec=/usr/sbin/tablet-assist-service --dbus
 User=tablet-assist
 SystemdService=tablet-assist.service

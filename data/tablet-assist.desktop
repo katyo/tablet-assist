@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Tablet Assist Applet
+Name[ru]=Апплет планшетного режима
+Comment=Tablet-mode Assistant
+Comment[ru]=Ассистент планшетного режима
+Exec=tablet-assist-ui
+Icon=tablet
+Type=Application

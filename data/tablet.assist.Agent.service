@@ -1,0 +1,4 @@
+[D-BUS Service]
+Name=tablet.assist.Agent
+Exec=/usr/sbin/tablet-assist-agent --journal --log debug
+SystemdService=tablet-assist-agent.service
