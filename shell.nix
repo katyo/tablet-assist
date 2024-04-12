@@ -1,7 +1,7 @@
 { pkgs ? import <nixpkgs> {} }:
 with pkgs;
 mkShell {
-    nativeBuildInputs = [ pkg-config cargo ];
+    nativeBuildInputs = [ pkg-config cargo rustc ];
     buildInputs = [
         udev libinput
         gobject-introspection
