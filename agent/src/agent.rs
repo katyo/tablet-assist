@@ -212,12 +212,7 @@ impl Agent {
             .build()
             .await?;
 
-        let xclient = XClient::new()
-            .await
-            .map_err(|error| {
-                tracing::warn!("Unable to connect to X server due to: {error}");
-            })
-            .ok();
+        let xclient = Some(XClient::new());
 
         let auto_tablet_mode = config.tablet_mode.auto;
         let auto_orientation = config.orientation.auto;

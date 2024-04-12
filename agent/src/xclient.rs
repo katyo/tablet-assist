@@ -1,8 +1,10 @@
 use crate::{InputDeviceInfo, Orientation};
-use smol::{lock::RwLock, spawn, Task};
-use std::{collections::HashMap, sync::OnceLock};
+use core::{convert::Infallible, future::Future};
+use smol::{lock::Mutex, spawn, Task};
+use std::{collections::HashMap, sync::Arc, sync::OnceLock};
 use x11rb::{
     connection::Connection,
+    errors::ConnectionError,
     protocol::{
         randr::{
             Connection as RandrConnection, ConnectionExt as RandrConnectionExt, ModeInfo,
@@ -52,26 +54,20 @@ impl From<std::string::FromUtf8Error> for XError {
 
 const ANY_PROPERTY_TYPE: Atom = 0;
 
-pub struct XClient {
-    /// Keep connection background task running
-    #[allow(unused)]
-    task: Task<()>,
+struct State {
     conn: RustConnection,
     screen: Screen,
-    device_type_map: RwLock<HashMap<u32, String>>,
+    device_type_map: Mutex<HashMap<u32, String>>,
     device_enabled_prop: Atom,
     coord_trans_mat_prop: Atom,
 }
 
-impl XClient {
-    pub async fn new() -> Result<Self> {
+impl State {
+    pub async fn new() -> Result<(
+        Self,
+        impl Future<Output = core::result::Result<Infallible, ConnectionError>> + Send,
+    )> {
         let (conn, screen_num, reader) = RustConnection::connect(None).await?;
-
-        let task = spawn(async move {
-            if let Err(error) = reader.await {
-                tracing::error!("Xserver reader dead: {error}");
-            }
-        });
 
         let setup = conn.setup();
 
@@ -103,19 +99,21 @@ impl XClient {
 
         let mut device_type_map = HashMap::new();
         device_type_map.insert(0, "VIRTUAL".to_string());
-        let device_type_map = RwLock::new(device_type_map);
+        let device_type_map = Mutex::new(device_type_map);
 
         let device_enabled_prop = Self::atom(&conn, "Device Enabled").await?;
         let coord_trans_mat_prop = Self::atom(&conn, "Coordinate Transformation Matrix").await?;
 
-        Ok(Self {
-            task,
-            conn,
-            screen,
-            device_type_map,
-            device_enabled_prop,
-            coord_trans_mat_prop,
-        })
+        Ok((
+            Self {
+                conn,
+                screen,
+                device_type_map,
+                device_enabled_prop,
+                coord_trans_mat_prop,
+            },
+            reader,
+        ))
     }
 
     async fn atom(conn: &RustConnection, name: impl AsRef<[u8]>) -> Result<u32> {
@@ -134,25 +132,71 @@ impl XClient {
     }
 
     async fn get_input_device_type(&self, type_: u32) -> Result<String> {
-        Ok(
-            if let Some(name) = {
-                let map = self.device_type_map.read().await;
-                map.get(&type_).cloned()
-            } {
-                name
-            } else {
-                let name = self.atom_name(type_).await?;
-                self.device_type_map
-                    .write()
-                    .await
-                    .insert(type_, name.clone());
-                name
-            },
-        )
+        let mut map = self.device_type_map.lock().await;
+
+        Ok(if let Some(name) = map.get(&type_).cloned() {
+            name
+        } else {
+            let name = self.atom_name(type_).await?;
+            map.insert(type_, name.clone());
+            name
+        })
+    }
+}
+
+struct Conn {
+    /// Keep connection background task running
+    #[allow(unused)]
+    task: Task<()>,
+    state: Arc<State>,
+}
+
+#[derive(Clone)]
+pub struct XClient {
+    conn: Arc<Mutex<Option<Conn>>>,
+}
+
+impl XClient {
+    pub fn new() -> Self {
+        Self {
+            conn: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    async fn conn(&self) -> Result<Arc<State>> {
+        let mut conn = self.conn.lock().await;
+
+        Ok(if let Some(conn) = conn.as_ref() {
+            // already connected
+            conn.state.clone()
+        } else {
+            // try to connect
+            let (state, reader) = State::new().await.map_err(|error| {
+                tracing::warn!("Unable to connect to X server due to: {error}");
+                error
+            })?;
+
+            let state = Arc::new(state);
+            let state2 = state.clone();
+            let conn2 = self.conn.clone();
+
+            *conn = Some(Conn {
+                task: spawn(async move {
+                    if let Err(error) = reader.await {
+                        tracing::error!("Xserver reader dead: {error}");
+                    }
+                    *conn2.lock().await = None;
+                }),
+                state,
+            });
+
+            state2
+        })
     }
 
     pub async fn input_devices(&self) -> Result<Vec<InputDeviceInfo>> {
-        let res = self.conn.xinput_list_input_devices().await?;
+        let conn = self.conn().await?;
+        let res = conn.conn.xinput_list_input_devices().await?;
         let reply = res.reply().await?;
 
         let mut devices = Vec::new();
@@ -160,7 +204,7 @@ impl XClient {
         for (info, name) in reply.devices.into_iter().zip(reply.names.into_iter()) {
             let id = info.device_id as _;
             let name = String::from_utf8(name.name)?;
-            let type_ = self.get_input_device_type(info.device_type).await?;
+            let type_ = conn.get_input_device_type(info.device_type).await?;
             devices.push(InputDeviceInfo { id, type_, name })
         }
 
@@ -187,11 +231,13 @@ impl XClient {
     */
 
     pub async fn set_input_device_state(&self, device: u32, enable: bool) -> Result<()> {
+        let conn = self.conn().await?;
+
         for _ in 0..4 {
-            let reply = self
+            let reply = conn
                 .conn
                 .xinput_get_device_property(
-                    self.device_enabled_prop,
+                    conn.device_enabled_prop,
                     ANY_PROPERTY_TYPE,
                     0,
                     1,
@@ -215,9 +261,9 @@ impl XClient {
 
             let value = state_to_propval(enable);
 
-            self.conn
+            conn.conn
                 .xinput_change_device_property(
-                    self.device_enabled_prop,
+                    conn.device_enabled_prop,
                     type_,
                     device as _,
                     PropMode::REPLACE,
@@ -235,11 +281,13 @@ impl XClient {
         device: u32,
         orientation: Orientation,
     ) -> Result<()> {
+        let conn = self.conn().await?;
+
         for _ in 0..4 {
-            let reply = self
+            let reply = conn
                 .conn
                 .xinput_get_device_property(
-                    self.coord_trans_mat_prop,
+                    conn.coord_trans_mat_prop,
                     ANY_PROPERTY_TYPE,
                     0,
                     core::mem::size_of::<f32>() as u32 * 9,
@@ -264,9 +312,9 @@ impl XClient {
                 break;
             }
 
-            self.conn
+            conn.conn
                 .xinput_change_device_property(
-                    self.coord_trans_mat_prop,
+                    conn.coord_trans_mat_prop,
                     type_,
                     device as _,
                     PropMode::REPLACE,
@@ -337,7 +385,9 @@ impl XClient {
     async fn get_screen_resources(&self, window: u32) -> Result<(ScreenResources, u32, u32)> {
         tracing::debug!("Request get screen 0x{window:x?} resources");
 
-        let reply = self
+        let conn = self.conn().await?;
+
+        let reply = conn
             .conn
             .randr_get_screen_resources_current(window)
             .await?
@@ -436,7 +486,9 @@ impl XClient {
     ) -> Result<()> {
         tracing::debug!("Request set screen 0x{window:x?} size {size:?}px {size_mm:?}mm");
 
-        self.conn
+        let conn = self.conn().await?;
+
+        conn.conn
             .randr_set_screen_size(
                 window,
                 size.width,
@@ -454,7 +506,9 @@ impl XClient {
     async fn get_output_info(&self, output: u32, conf_time: u32) -> Result<(OutputInfo, u32)> {
         tracing::debug!("Request get output 0x{output:x?} info, conf_time {conf_time}");
 
-        let reply = self
+        let conn = self.conn().await?;
+
+        let reply = conn
             .conn
             .randr_get_output_info(output, conf_time)
             .await?
@@ -487,7 +541,9 @@ impl XClient {
     async fn get_crtc_info(&self, crtc: u32, conf_time: u32) -> Result<(CrtcInfo, u32)> {
         tracing::debug!("Request get crtc 0x{crtc:x?} info, conf_time {conf_time}");
 
-        let reply = self
+        let conn = self.conn().await?;
+
+        let reply = conn
             .conn
             .randr_get_crtc_info(crtc, conf_time)
             .await?
@@ -528,7 +584,9 @@ impl XClient {
             "Request set crtc 0x{crtc:x?} config {config:?}, time {time}, conf_time {conf_time}"
         );
 
-        let reply = self
+        let conn = self.conn().await?;
+
+        let reply = conn
             .conn
             .randr_set_crtc_config(
                 crtc,
@@ -568,8 +626,14 @@ impl XClient {
         Err(XError::NotFound("builtin screen crtc/output"))
     }
 
+    async fn screen_root(&self) -> Result<u32> {
+        let conn = self.conn().await?;
+
+        Ok(conn.screen.root)
+    }
+
     pub async fn screen_orientation(&self, screen: Option<u32>) -> Result<Orientation> {
-        let window = screen.unwrap_or(self.screen.root);
+        let window = screen.unwrap_or(self.screen_root().await?);
 
         //let (info, ..) = self.get_screen_info(window).await?;
         let (crtc, _, time) = self.find_builtin(window).await?;
@@ -583,7 +647,7 @@ impl XClient {
         screen: Option<u32>,
         orientation: Orientation,
     ) -> Result<()> {
-        let window = screen.unwrap_or(self.screen.root);
+        let window = screen.unwrap_or(self.screen_root().await?);
 
         //let (info, root, time, conf_time) = self.get_screen_info(window).await?;
         let (crtc, output, time) = self.find_builtin(window).await?;
